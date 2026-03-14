@@ -1,0 +1,7 @@
+{
+  "name": "Marcaje Personal SistPro",
+  "description": "Sistema de registro de jornada laboral con geolocalización, dashboard de control y reportes de horas.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

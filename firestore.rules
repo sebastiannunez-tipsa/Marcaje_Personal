@@ -1,0 +1,122 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: employees
+    //   - id: string
+    //   - name: string
+    //   - dni: string
+    //   - role: string ('admin' | 'employee')
+    //   - centerIds: list
+    // Collection: centers
+    //   - id: string
+    //   - name: string
+    //   - address: string
+    //   - latitude: number
+    //   - longitude: number
+    //   - radius: number
+    // Collection: attendance
+    //   - id: string
+    //   - employeeId: string
+    //   - employeeName: string
+    //   - checkIn: string
+    //   - status: string ('active' | 'completed')
+    //   - centerId: string
+    // Collection: contractors
+    //   - id: string
+    //   - name: string
+    // Collection: roles
+    //   - id: string
+    //   - name: string
+    //   - isAdmin: boolean
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Kiosk application: all authenticated users (including anonymous) are trusted kiosks.
+    // Read access is required for the employee dropdown and other kiosk functions.
+    
+    function isValidEmployee(data) {
+      return data.keys().hasAll(['id', 'name', 'dni', 'role', 'centerIds']) &&
+             data.keys().hasOnly(['id', 'name', 'dni', 'role', 'roleId', 'contractorId', 'centerIds', 'area', 'shift', 'hireDate', 'terminationDate', 'standardHours', 'password']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.dni is string && data.dni.size() > 0 && data.dni.size() < 50 &&
+             data.role in ['admin', 'employee'] &&
+             data.centerIds is list;
+    }
+
+    function isValidCenter(data) {
+      return data.keys().hasAll(['id', 'name', 'address', 'latitude', 'longitude', 'radius']) &&
+             data.keys().hasOnly(['id', 'name', 'address', 'latitude', 'longitude', 'radius']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.address is string && data.address.size() > 0 && data.address.size() < 200 &&
+             data.latitude is number &&
+             data.longitude is number &&
+             data.radius is number && data.radius > 0;
+    }
+
+    function isValidAttendance(data) {
+      return data.keys().hasAll(['id', 'employeeId', 'employeeName', 'checkIn', 'status', 'centerId']) &&
+             data.keys().hasOnly(['id', 'employeeId', 'employeeName', 'checkIn', 'checkOut', 'latitude', 'longitude', 'distance', 'status', 'centerId']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.employeeId is string && data.employeeId.size() > 0 && data.employeeId.size() < 100 &&
+             data.employeeName is string && data.employeeName.size() > 0 && data.employeeName.size() < 100 &&
+             data.checkIn is string && data.checkIn.size() > 0 && data.checkIn.size() < 50 &&
+             data.status in ['active', 'completed'] &&
+             data.centerId is string && data.centerId.size() > 0 && data.centerId.size() < 100;
+    }
+
+    function isValidContractor(data) {
+      return data.keys().hasAll(['id', 'name']) &&
+             data.keys().hasOnly(['id', 'name']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100;
+    }
+
+    function isValidRole(data) {
+      return data.keys().hasAll(['id', 'name', 'isAdmin']) &&
+             data.keys().hasOnly(['id', 'name', 'isAdmin']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.isAdmin is bool;
+    }
+
+    match /employees/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidEmployee(request.resource.data);
+      allow update: if isAuthenticated() && isValidEmployee(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+    match /centers/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidCenter(request.resource.data);
+      allow update: if isAuthenticated() && isValidCenter(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+    match /attendance/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidAttendance(request.resource.data);
+      allow update: if isAuthenticated() && isValidAttendance(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+    match /contractors/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidContractor(request.resource.data);
+      allow update: if isAuthenticated() && isValidContractor(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+    match /roles/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidRole(request.resource.data);
+      allow update: if isAuthenticated() && isValidRole(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "An employee in the system",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "dni": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "employee"] },
+        "roleId": { "type": "string" },
+        "contractorId": { "type": "string" },
+        "centerIds": { "type": "array", "items": { "type": "string" } },
+        "area": { "type": "string" },
+        "shift": { "type": "string" },
+        "hireDate": { "type": "string" },
+        "terminationDate": { "type": "string" },
+        "standardHours": { "type": "number" },
+        "password": { "type": "string" }
+      },
+      "required": ["id", "name", "dni", "role", "centerIds"]
+    },
+    "WorkCenter": {
+      "title": "WorkCenter",
+      "description": "A work center location",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "radius": { "type": "number" }
+      },
+      "required": ["id", "name", "address", "latitude", "longitude", "radius"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "A record of an employee's attendance",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "employeeName": { "type": "string" },
+        "checkIn": { "type": "string" },
+        "checkOut": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "distance": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "completed"] },
+        "centerId": { "type": "string" }
+      },
+      "required": ["id", "employeeId", "employeeName", "checkIn", "status", "centerId"]
+    },
+    "Contractor": {
+      "title": "Contractor",
+      "description": "A contractor company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "CustomRole": {
+      "title": "CustomRole",
+      "description": "A custom role for employees",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "isAdmin": { "type": "boolean" }
+      },
+      "required": ["id", "name", "isAdmin"]
+    }
+  },
+  "firestore": {
+    "employees": {
+      "schema": "Employee",
+      "description": "Collection of employees"
+    },
+    "centers": {
+      "schema": "WorkCenter",
+      "description": "Collection of work centers"
+    },
+    "attendance": {
+      "schema": "AttendanceRecord",
+      "description": "Collection of attendance records"
+    },
+    "contractors": {
+      "schema": "Contractor",
+      "description": "Collection of contractors"
+    },
+    "roles": {
+      "schema": "CustomRole",
+      "description": "Collection of custom roles"
+    }
+  }
+}
