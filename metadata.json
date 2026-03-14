@@ -1,5 +1,5 @@
 {
-  "name": "Marcaje Personal SistPro",
+  "name": "Sistema Control Horario - MarSEPA",
   "description": "Sistema de registro de jornada laboral con geolocalización, dashboard de control y reportes de horas.",
   "requestFramePermissions": [
     "geolocation"

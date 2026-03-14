@@ -67,7 +67,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 
 import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, subscribeToActiveSession, deleteEmployee, deleteCenter, deleteContractor, deleteRole } from './db';
 import { auth } from './firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<Employee | null>(null);
@@ -80,12 +80,23 @@ export default function App() {
   const [adminSubView, setAdminSubView] = useState<'dashboard' | 'employees' | 'centers' | 'reports' | 'contractors' | 'roles'>('dashboard');
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     initDB();
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setIsAuthReady(true);
+        setAuthError(null);
+      } else {
+        try {
+          await signInAnonymously(auth);
+        } catch (err: any) {
+          console.error("Error in anonymous sign-in:", err);
+          if (err.code === 'auth/admin-restricted-operation') {
+            setAuthError("La autenticación anónima está desactivada. Por favor, actívala en la consola de Firebase o inicia sesión con Google.");
+          }
+        }
       }
     });
     return () => unsubscribeAuth();
@@ -120,11 +131,27 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleGoogleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error("Error in Google login:", err);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Error in sign out:", err);
+    }
     setCurrentUser(null);
     setLoginCenterId('');
     setView('login');
   };
+
+  const fetchData = () => {};
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -133,7 +160,7 @@ export default function App() {
           <div className="bg-tipsa-blue p-2 rounded-xl">
             <Clock className="text-white w-6 h-6" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-white">Sistema Control horario <span className="text-blue-400">SISTPRO</span></h1>
+          <h1 className="text-xl font-bold tracking-tight text-white">Sistema Control Horario - <span className="text-blue-400">MarSEPA</span></h1>
         </div>
         
         {currentUser && (
@@ -219,7 +246,16 @@ export default function App() {
         <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full overflow-auto">
           <AnimatePresence mode="wait">
             {view === 'login' && (
-              <LoginView employees={employees} centers={centers} roles={roles} isAdminLogin={isAdminLogin} onLogin={(emp, cid, asAdmin) => handleLogin(emp, cid, asAdmin)} />
+              <LoginView 
+                employees={employees} 
+                centers={centers} 
+                roles={roles} 
+                isAdminLogin={isAdminLogin} 
+                isAuthReady={isAuthReady}
+                authError={authError}
+                onGoogleLogin={handleGoogleLogin}
+                onLogin={(emp, cid, asAdmin) => handleLogin(emp, cid, asAdmin)} 
+              />
             )}
 
             {view === 'employee' && currentUser && (
@@ -244,13 +280,79 @@ export default function App() {
   );
 }
 
-function LoginView({ employees, centers, roles, isAdminLogin, onLogin }: { employees: Employee[], centers: WorkCenter[], roles: CustomRole[], isAdminLogin: boolean, onLogin: (e: Employee, centerId: string, asAdmin: boolean) => void }) {
+function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authError, onGoogleLogin, onLogin }: { employees: Employee[], centers: WorkCenter[], roles: CustomRole[], isAdminLogin: boolean, isAuthReady: boolean, authError: string | null, onGoogleLogin: () => void, onLogin: (e: Employee, centerId: string, asAdmin: boolean) => void }) {
   const [selectedCenterId, setSelectedCenterId] = useState<string>('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loginMode, setLoginMode] = useState<'employee' | 'admin'>('employee');
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
+
+  const handleBootstrap = async () => {
+    setIsBootstrapping(true);
+    try {
+      // Create a default center first
+      const defaultCenter: Partial<WorkCenter> = {
+        name: 'Oficina Central',
+        address: 'Calle Principal 1',
+        latitude: 40.4168,
+        longitude: -3.7038,
+        radius: 500
+      };
+      const centerId = `wc_${Date.now()}`;
+      await saveCenter({ ...defaultCenter, id: centerId });
+
+      // Create default admin
+      const defaultAdmin: Partial<Employee> = {
+        name: 'Administrador',
+        dni: 'ADMIN01',
+        role: 'admin',
+        centerIds: [centerId],
+        password: 'admin'
+      };
+      await saveEmployee(defaultAdmin);
+      setError(null);
+    } catch (err: any) {
+      setError("Error al crear administrador: " + err.message);
+    } finally {
+      setIsBootstrapping(false);
+    }
+  };
+
+  const handleMigration = async () => {
+    setIsBootstrapping(true);
+    try {
+      const localEmps = localStorage.getItem('tipsa_employees');
+      const localCenters = localStorage.getItem('tipsa_centers');
+      const localRoles = localStorage.getItem('tipsa_roles');
+      const localContractors = localStorage.getItem('tipsa_contractors');
+
+      if (localCenters) {
+        const parsed = JSON.parse(localCenters);
+        for (const c of parsed) await saveCenter(c);
+      }
+      if (localRoles) {
+        const parsed = JSON.parse(localRoles);
+        for (const r of parsed) await saveRole(r);
+      }
+      if (localContractors) {
+        const parsed = JSON.parse(localContractors);
+        for (const c of parsed) await saveContractor(c);
+      }
+      if (localEmps) {
+        const parsed = JSON.parse(localEmps);
+        for (const e of parsed) await saveEmployee(e);
+      }
+      
+      setError(null);
+      alert("Migración completada con éxito.");
+    } catch (err: any) {
+      setError("Error en migración: " + err.message);
+    } finally {
+      setIsBootstrapping(false);
+    }
+  };
 
   const activeEmployees = employees.filter(emp => {
     if (!emp.terminationDate) return true;
@@ -459,6 +561,60 @@ function LoginView({ employees, centers, roles, isAdminLogin, onLogin }: { emplo
           >
             ACCEDER
           </button>
+
+          {authError && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-center space-y-3">
+              <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">{authError}</p>
+              <button
+                onClick={onGoogleLogin}
+                className="w-full py-2 bg-white border border-red-200 text-red-600 rounded-lg font-bold text-[10px] hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
+              >
+                <svg className="w-3 h-3" viewBox="0 0 24 24">
+                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
+                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                </svg>
+                INICIAR SESIÓN CON GOOGLE
+              </button>
+            </div>
+          )}
+
+          {employees.length === 0 && (
+            <div className="mt-8 p-6 bg-slate-50 border border-slate-200 rounded-[2rem] text-center space-y-4">
+              <div className="bg-amber-100 w-10 h-10 rounded-full flex items-center justify-center mx-auto">
+                <AlertCircle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-slate-900">Base de Datos Vacía</p>
+                <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-wider">No hay empleados registrados en el nuevo sistema.</p>
+              </div>
+              
+              <div className="grid grid-cols-1 gap-2">
+                <button
+                  onClick={handleBootstrap}
+                  disabled={isBootstrapping || !isAuthReady}
+                  className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs hover:bg-slate-700 transition-colors disabled:opacity-50"
+                >
+                  {isBootstrapping ? 'CREANDO...' : !isAuthReady ? 'CONECTANDO...' : 'CREAR ADMIN POR DEFECTO'}
+                </button>
+                
+                {(localStorage.getItem('tipsa_employees') || localStorage.getItem('tipsa_centers')) && (
+                  <button
+                    onClick={handleMigration}
+                    disabled={isBootstrapping}
+                    className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-50 transition-colors disabled:opacity-50"
+                  >
+                    MIGRAR DATOS LOCALES
+                  </button>
+                )}
+              </div>
+              
+              <p className="text-[9px] text-slate-400 font-medium italic">
+                * Admin por defecto: DNI: ADMIN01 / Pass: admin
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>

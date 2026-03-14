@@ -191,7 +191,7 @@ export const subscribeToActiveSession = (
     collection(db, 'attendance')
   );
   return onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as AttendanceRecord));
     const active = data.find(r => r.employeeId === employeeId && r.status === 'active');
     callback(active || null);
   }, (error) => {
