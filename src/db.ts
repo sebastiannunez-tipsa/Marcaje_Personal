@@ -57,12 +57,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Connect to Firestore and authenticate anonymously
 export const initDB = async () => {
   try {
-    await signInAnonymously(auth);
+    // Just a connection test, auth is handled in App.tsx
     await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Firestore connection test successful");
   } catch (error: any) {
-    if (error.message?.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
-    }
+    console.warn("Firestore connection test failed (this is normal if collection doesn't exist yet):", error.message);
   }
 };
 
@@ -81,91 +80,99 @@ export const subscribeToCollection = <T>(
 
 export const saveEmployee = async (employee: Partial<Employee>) => {
   try {
-    if (employee.id && !employee.id.startsWith('emp')) {
-      await setDoc(doc(db, 'employees', employee.id), employee, { merge: true });
-    } else {
-      const newId = `emp_${Date.now()}`;
-      await setDoc(doc(db, 'employees', newId), { ...employee, id: newId });
-    }
+    console.log("Saving employee:", employee);
+    if (!employee.id) throw new Error("ID de empleado requerido");
+    await setDoc(doc(db, 'employees', employee.id), employee, { merge: true });
+    console.log("Employee saved successfully");
   } catch (error) {
+    console.error("Error saving employee:", error);
     handleFirestoreError(error, OperationType.WRITE, 'employees');
-  }
-};
-
-export const saveCenter = async (center: Partial<WorkCenter>) => {
-  try {
-    if (center.id && !center.id.startsWith('wc')) {
-      await setDoc(doc(db, 'centers', center.id), center, { merge: true });
-    } else {
-      const newId = `wc_${Date.now()}`;
-      await setDoc(doc(db, 'centers', newId), { ...center, id: newId });
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'centers');
-  }
-};
-
-export const saveContractor = async (contractor: Partial<Contractor>) => {
-  try {
-    if (contractor.id && !contractor.id.startsWith('cont')) {
-      await setDoc(doc(db, 'contractors', contractor.id), contractor, { merge: true });
-    } else {
-      const newId = `cont_${Date.now()}`;
-      await setDoc(doc(db, 'contractors', newId), { ...contractor, id: newId });
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'contractors');
-  }
-};
-
-export const saveRole = async (role: Partial<CustomRole>) => {
-  try {
-    if (role.id && !role.id.startsWith('role')) {
-      await setDoc(doc(db, 'roles', role.id), role, { merge: true });
-    } else {
-      const newId = `role_${Date.now()}`;
-      await setDoc(doc(db, 'roles', newId), { ...role, id: newId });
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'roles');
   }
 };
 
 export const deleteEmployee = async (id: string) => {
   try {
+    console.log("Deleting employee:", id);
     await deleteDoc(doc(db, 'employees', id));
+    console.log("Employee deleted successfully");
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `employees/${id}`);
+    console.error("Error deleting employee:", error);
+    handleFirestoreError(error, OperationType.DELETE, 'employees');
+  }
+};
+
+export const saveCenter = async (center: Partial<WorkCenter>) => {
+  try {
+    console.log("Saving center:", center);
+    if (!center.id) throw new Error("ID de centro requerido");
+    await setDoc(doc(db, 'centers', center.id), center, { merge: true });
+    console.log("Center saved successfully");
+  } catch (error) {
+    console.error("Error saving center:", error);
+    handleFirestoreError(error, OperationType.WRITE, 'centers');
   }
 };
 
 export const deleteCenter = async (id: string) => {
   try {
+    console.log("Deleting center:", id);
     await deleteDoc(doc(db, 'centers', id));
+    console.log("Center deleted successfully");
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `centers/${id}`);
+    console.error("Error deleting center:", error);
+    handleFirestoreError(error, OperationType.DELETE, 'centers');
+  }
+};
+
+export const saveContractor = async (contractor: Partial<Contractor>) => {
+  try {
+    console.log("Saving contractor:", contractor);
+    if (!contractor.id) throw new Error("ID de contrata requerido");
+    await setDoc(doc(db, 'contractors', contractor.id), contractor, { merge: true });
+    console.log("Contractor saved successfully");
+  } catch (error) {
+    console.error("Error saving contractor:", error);
+    handleFirestoreError(error, OperationType.WRITE, 'contractors');
   }
 };
 
 export const deleteContractor = async (id: string) => {
   try {
+    console.log("Deleting contractor:", id);
     await deleteDoc(doc(db, 'contractors', id));
+    console.log("Contractor deleted successfully");
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `contractors/${id}`);
+    console.error("Error deleting contractor:", error);
+    handleFirestoreError(error, OperationType.DELETE, 'contractors');
+  }
+};
+
+export const saveRole = async (role: Partial<CustomRole>) => {
+  try {
+    console.log("Saving role:", role);
+    if (!role.id) throw new Error("ID de rol requerido");
+    await setDoc(doc(db, 'roles', role.id), role, { merge: true });
+    console.log("Role saved successfully");
+  } catch (error) {
+    console.error("Error saving role:", error);
+    handleFirestoreError(error, OperationType.WRITE, 'roles');
   }
 };
 
 export const deleteRole = async (id: string) => {
   try {
+    console.log("Deleting role:", id);
     await deleteDoc(doc(db, 'roles', id));
+    console.log("Role deleted successfully");
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `roles/${id}`);
+    console.error("Error deleting role:", error);
+    handleFirestoreError(error, OperationType.DELETE, 'roles');
   }
 };
 
 export const checkIn = async (record: Omit<AttendanceRecord, 'id'>) => {
   try {
-    const newId = `att_${Date.now()}`;
+    const newId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     await setDoc(doc(db, 'attendance', newId), { ...record, id: newId });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'attendance');

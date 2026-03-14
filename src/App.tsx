@@ -24,10 +24,12 @@ import {
   Download,
   TrendingUp,
   TrendingDown,
+  RefreshCw,
   Briefcase,
   UserCog,
   Key,
-  Lock
+  Lock,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, differenceInHours, parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
@@ -42,7 +44,10 @@ import {
   ResponsiveContainer,
   Cell,
   PieChart,
-  Pie
+  Pie,
+  LineChart,
+  Line,
+  Legend
 } from 'recharts';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -81,20 +86,48 @@ export default function App() {
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{message: string, onConfirm: () => void} | null>(null);
+
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  const showSuccess = (msg: string) => setNotification({ message: msg, type: 'success' });
+  const showError = (msg: string) => {
+    try {
+      const parsed = JSON.parse(msg);
+      setNotification({ message: parsed.error || msg, type: 'error' });
+    } catch {
+      setNotification({ message: msg, type: 'error' });
+    }
+  };
+
+  const confirm = (message: string, onConfirm: () => void) => {
+    setConfirmDialog({ message, onConfirm });
+  };
 
   useEffect(() => {
     initDB();
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      console.log("Auth state changed:", user ? `User ${user.uid}` : "No user");
       if (user) {
         setIsAuthReady(true);
         setAuthError(null);
       } else {
+        setIsAuthReady(false);
         try {
+          console.log("Attempting anonymous sign-in...");
           await signInAnonymously(auth);
         } catch (err: any) {
           console.error("Error in anonymous sign-in:", err);
           if (err.code === 'auth/admin-restricted-operation') {
             setAuthError("La autenticación anónima está desactivada. Por favor, actívala en la consola de Firebase o inicia sesión con Google.");
+          } else {
+            setAuthError("Error de conexión con el servicio de autenticación.");
           }
         }
       }
@@ -104,6 +137,8 @@ export default function App() {
 
   useEffect(() => {
     if (!isAuthReady) return;
+
+    console.log("Auth is ready, current user:", auth.currentUser?.uid, "isAnonymous:", auth.currentUser?.isAnonymous);
 
     const unsubEmployees = subscribeToCollection<Employee>('employees', setEmployees);
     const unsubCenters = subscribeToCollection<WorkCenter>('centers', setCenters);
@@ -155,12 +190,68 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+      <AnimatePresence>
+        {notification && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className={`fixed top-20 right-6 z-[100] p-4 rounded-2xl shadow-2xl border-2 flex items-center gap-3 min-w-[300px] ${
+              notification.type === 'success' 
+                ? 'bg-emerald-50 border-emerald-100 text-emerald-800' 
+                : 'bg-red-50 border-red-100 text-red-800'
+            }`}
+          >
+            <div className={`p-2 rounded-xl ${notification.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}>
+              {notification.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-white" /> : <AlertCircle className="w-5 h-5 text-white" />}
+            </div>
+            <p className="font-bold text-sm flex-1">{notification.message}</p>
+            <button onClick={() => setNotification(null)} className="p-1 hover:bg-black/5 rounded-lg transition-colors">
+              <X className="w-4 h-4 opacity-50" />
+            </button>
+          </motion.div>
+        )}
+
+        {confirmDialog && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl border border-slate-100"
+            >
+              <div className="bg-amber-50 w-16 h-16 rounded-2xl flex items-center justify-center mb-6">
+                <AlertCircle className="w-8 h-8 text-amber-500" />
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">¿Confirmar acción?</h3>
+              <p className="text-slate-500 font-bold mb-8 leading-relaxed">{confirmDialog.message}</p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setConfirmDialog(null)}
+                  className="flex-1 py-4 px-6 rounded-2xl font-black text-sm text-slate-500 hover:bg-slate-50 transition-all uppercase tracking-widest"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    confirmDialog.onConfirm();
+                    setConfirmDialog(null);
+                  }}
+                  className="flex-1 py-4 px-6 rounded-2xl font-black text-sm bg-tipsa-blue text-white shadow-lg shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <header className="bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-2">
           <div className="bg-tipsa-blue p-2 rounded-xl">
             <Clock className="text-white w-6 h-6" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-white">Sistema Control Horario - <span className="text-blue-400">MarSEPA</span></h1>
+          <h1 className="text-xl font-bold tracking-tight text-white">Sistema Control Horario - <span className="text-blue-400">PASeMarc</span></h1>
         </div>
         
         {currentUser && (
@@ -255,6 +346,8 @@ export default function App() {
                 authError={authError}
                 onGoogleLogin={handleGoogleLogin}
                 onLogin={(emp, cid, asAdmin) => handleLogin(emp, cid, asAdmin)} 
+                showSuccess={showSuccess}
+                showError={showError}
               />
             )}
 
@@ -265,12 +358,12 @@ export default function App() {
             {view === 'admin' && currentUser && (
               <div className="space-y-6">
                 {adminSubView === 'dashboard' && <AdminDashboard employees={employees} />}
-                {adminSubView === 'employees' && <EmployeeManagement employees={employees} centers={centers} contractors={contractors} roles={roles} onUpdate={fetchData} />}
-                {adminSubView === 'centers' && <CenterManagement centers={centers} onUpdate={fetchData} />}
+                {adminSubView === 'employees' && <EmployeeManagement employees={employees} centers={centers} contractors={contractors} roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
+                {adminSubView === 'centers' && <CenterManagement centers={centers} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'reports' && <ReportsView employees={employees} centers={centers} contractors={contractors} />}
                 {adminSubView === 'kpis' && <KPIsView employees={employees} centers={centers} contractors={contractors} />}
-                {adminSubView === 'contractors' && <ContractorManagement contractors={contractors} onUpdate={fetchData} />}
-                {adminSubView === 'roles' && <RoleManagement roles={roles} onUpdate={fetchData} />}
+                {adminSubView === 'contractors' && <ContractorManagement contractors={contractors} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
+                {adminSubView === 'roles' && <RoleManagement roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
               </div>
             )}
           </AnimatePresence>
@@ -280,14 +373,15 @@ export default function App() {
   );
 }
 
-function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authError, onGoogleLogin, onLogin }: { employees: Employee[], centers: WorkCenter[], roles: CustomRole[], isAdminLogin: boolean, isAuthReady: boolean, authError: string | null, onGoogleLogin: () => void, onLogin: (e: Employee, centerId: string, asAdmin: boolean) => void }) {
+function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authError, onGoogleLogin, onLogin, showSuccess, showError }: { employees: Employee[], centers: WorkCenter[], roles: CustomRole[], isAdminLogin: boolean, isAuthReady: boolean, authError: string | null, onGoogleLogin: () => void, onLogin: (e: Employee, centerId: string, asAdmin: boolean) => void, showSuccess: (m: string) => void, showError: (m: string) => void }) {
   const [selectedCenterId, setSelectedCenterId] = useState<string>('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loginMode, setLoginMode] = useState<'employee' | 'admin'>('employee');
+  const [loginMode, setLoginMode] = useState<'employee' | 'admin' | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(false);
 
   const handleBootstrap = async () => {
     setIsBootstrapping(true);
@@ -346,7 +440,7 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
       }
       
       setError(null);
-      alert("Migración completada con éxito.");
+      showSuccess("Migración completada con éxito.");
     } catch (err: any) {
       setError("Error en migración: " + err.message);
     } finally {
@@ -371,9 +465,13 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
     const hasAdminPrivileges = emp.role === 'admin' || Boolean(assignedRole?.isAdmin);
 
     if (isAdminLogin) {
+      // Admin access: show only those with admin privileges
       return hasAdminPrivileges;
     } else {
-      return !hasAdminPrivileges && (!selectedCenterId || emp.centerIds.includes(selectedCenterId));
+      // Employee access: show only normal employees (even if they have admin roles)
+      // but exclude pure administrators (role === 'admin')
+      if (emp.role === 'admin') return false;
+      return !selectedCenterId || emp.centerIds.includes(selectedCenterId);
     }
   });
 
@@ -382,7 +480,7 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
   const isStrictAdmin = selectedEmployee?.role === 'admin';
   const isRoleAdmin = Boolean(assignedRole?.isAdmin);
   const hasAdminPrivileges = isStrictAdmin || isRoleAdmin;
-  const needsChoice = !isAdminLogin && Boolean(!isStrictAdmin && isRoleAdmin);
+  const needsChoice = !isAdminLogin && hasAdminPrivileges;
 
   useEffect(() => {
     if (isAdminLogin || (hasAdminPrivileges && (!needsChoice || loginMode === 'admin'))) {
@@ -414,6 +512,9 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
       return;
     }
 
+    setIsDetecting(true);
+    setError(null);
+
     navigator.geolocation.getCurrentPosition((pos) => {
       let nearest: WorkCenter | null = null;
       let minDist = Infinity;
@@ -429,9 +530,11 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
       if (nearest) {
         setSelectedCenterId((nearest as WorkCenter).id);
       }
+      setIsDetecting(false);
     }, (err) => {
       setError("Error al obtener ubicación: " + err.message);
-    });
+      setIsDetecting(false);
+    }, { enableHighAccuracy: true, timeout: 10000 });
   }, [centers]);
 
   useEffect(() => {
@@ -471,9 +574,11 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">1. Selecciona Centro</label>
                 <button 
                   onClick={detectNearestCenter}
-                  className="text-[10px] font-bold text-tipsa-blue hover:text-blue-700 flex items-center gap-1"
+                  disabled={isDetecting}
+                  className="text-[10px] font-bold text-tipsa-blue hover:text-blue-700 flex items-center gap-1 disabled:opacity-50"
                 >
-                  <MapPin className="w-3 h-3" /> Detectar cercano
+                  <MapPin className={cn("w-3 h-3", isDetecting && "animate-bounce")} /> 
+                  {isDetecting ? 'Detectando...' : 'Detectar cercano'}
                 </button>
               </div>
               <select
@@ -498,7 +603,10 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
             </label>
             <select
               value={selectedEmployeeId}
-              onChange={(e) => setSelectedEmployeeId(e.target.value)}
+              onChange={(e) => {
+                setSelectedEmployeeId(e.target.value);
+                setLoginMode(null);
+              }}
               disabled={!isAdminLogin && !selectedCenterId}
               className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue disabled:opacity-50"
             >
@@ -556,7 +664,7 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
 
           <button
             onClick={handleLogin}
-            disabled={!selectedEmployeeId || (showPassword && !password)}
+            disabled={!selectedEmployeeId || (needsChoice && !loginMode) || (showPassword && !password)}
             className="w-full py-4 bg-tipsa-blue text-white rounded-xl font-black text-lg shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all disabled:opacity-50 disabled:shadow-none mt-4"
           >
             ACCEDER
@@ -664,6 +772,7 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const assignedRole = roles.find(r => r.id === employee.roleId);
   const assignedContractor = contractors.find(c => c.id === employee.contractorId);
@@ -688,8 +797,17 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
     }
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
-      const pos = await new Promise<GeolocationPosition>((res, rej) => navigator.geolocation.getCurrentPosition(res, rej));
+      const pos = await new Promise<GeolocationPosition>((res, rej) => {
+        const timeoutId = setTimeout(() => rej(new Error("Tiempo de espera agotado al obtener ubicación. Revisa los permisos de GPS.")), 10000);
+        navigator.geolocation.getCurrentPosition(
+          (p) => { clearTimeout(timeoutId); res(p); },
+          (e) => { clearTimeout(timeoutId); rej(e); },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      });
+
       const dist = calculateDistance(pos.coords.latitude, pos.coords.longitude, selectedCenter.latitude, selectedCenter.longitude);
 
       if (dist > selectedCenter.radius) {
@@ -707,8 +825,11 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
         checkOut: null,
         status: 'active'
       });
+      
+      setSuccess("¡Entrada registrada con éxito!");
+      setTimeout(() => onLogout(), 2000);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Error desconocido al registrar entrada");
     } finally {
       setLoading(false);
     }
@@ -717,10 +838,14 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
   const handleCheckOut = async () => {
     if (!activeSession) return;
     setLoading(true);
+    setError(null);
+    setSuccess(null);
     try {
       await checkOut(activeSession.id, new Date().toISOString());
+      setSuccess("¡Salida registrada con éxito!");
+      setTimeout(() => onLogout(), 2000);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Error desconocido al registrar salida");
     } finally {
       setLoading(false);
     }
@@ -751,9 +876,16 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
         </div>
 
         {error && (
-          <div className="mb-8 p-5 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-4 text-red-700">
+          <div className="mb-8 p-5 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-4 text-red-700 animate-shake">
             <AlertCircle className="w-6 h-6 flex-shrink-0" />
             <p className="font-bold text-sm leading-relaxed">{error}</p>
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-8 p-5 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-start gap-4 text-emerald-700 animate-bounce-subtle">
+            <CheckCircle2 className="w-6 h-6 flex-shrink-0" />
+            <p className="font-bold text-sm leading-relaxed">{success}</p>
           </div>
         )}
 
@@ -878,6 +1010,13 @@ function AdminDashboard({ employees }: { employees: Employee[] }) {
       }
     });
 
+    const departuresThisMonth = employees.filter(emp => {
+      if (!emp.terminationDate) return false;
+      const termDate = parseISO(emp.terminationDate);
+      const now = new Date();
+      return termDate.getMonth() === now.getMonth() && termDate.getFullYear() === now.getFullYear();
+    }).length;
+
     return {
       totalEmployees: new Set(filteredLogs.map(l => l.employeeId)).size,
       totalHours,
@@ -968,7 +1107,7 @@ function AdminDashboard({ employees }: { employees: Employee[] }) {
   );
 }
 
-function EmployeeManagement({ employees, centers, contractors, roles, onUpdate }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[], roles: CustomRole[], onUpdate: () => void }) {
+function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, showSuccess, showError, confirm }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[], roles: CustomRole[], onUpdate: () => void, showSuccess: (m: string) => void, showError: (m: string) => void, confirm: (m: string, c: () => void) => void }) {
   const [editing, setEditing] = useState<Partial<Employee> | null>(null);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -981,22 +1120,24 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate }
         }
       }
 
-      await saveEmployee(editing);
+      await saveEmployee(editing!);
+      showSuccess("Empleado guardado correctamente");
       setEditing(null);
-      // onUpdate() is no longer needed since we use real-time listeners, but we can keep it or remove it.
     } catch (err: any) {
-      alert(err.message);
+      showError(err.message);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm("¿Estás seguro de que deseas eliminar este empleado?")) {
+    confirm("¿Estás seguro de que deseas eliminar este empleado?", async () => {
       try {
         await deleteEmployee(id);
+        showSuccess("Empleado eliminado correctamente");
+        if (editing?.id === id) setEditing(null);
       } catch (err: any) {
-        alert(err.message);
+        showError(err.message);
       }
-    }
+    });
   };
 
   const selectedRole = roles.find(r => r.id === editing?.roleId);
@@ -1007,7 +1148,7 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate }
       <div className="flex justify-between items-center">
         <h3 className="text-2xl font-black text-slate-900">Gestión de Empleados</h3>
         <button 
-          onClick={() => setEditing({ id: `emp${Date.now()}`, name: '', dni: '', role: 'employee', centerIds: [], area: '', shift: '', standardHours: 8 })}
+          onClick={() => setEditing({ id: `emp${Date.now()}_${Math.random().toString(36).substring(2, 9)}`, name: '', dni: '', role: 'employee', centerIds: [], area: '', shift: '', standardHours: 8 })}
           className="bg-tipsa-blue text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-100"
         >
           <Plus className="w-5 h-5" /> Nuevo Empleado
@@ -1098,11 +1239,24 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate }
               </div>
             </div>
           </div>
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 font-bold text-slate-500">Cancelar</button>
-            <button type="submit" className="bg-tipsa-blue text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-100">
-              <Save className="w-5 h-5" /> Guardar Cambios
-            </button>
+          <div className="flex justify-between items-center">
+            <div className="flex gap-3">
+              {editing.id && (
+                <button 
+                  type="button" 
+                  onClick={() => handleDelete(editing.id!)} 
+                  className="px-6 py-3 font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-2"
+                >
+                  <Trash2 className="w-5 h-5" /> Eliminar Empleado
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 font-bold text-slate-500">Cancelar</button>
+              <button type="submit" className="bg-tipsa-blue text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-100">
+                <Save className="w-5 h-5" /> Guardar Cambios
+              </button>
+            </div>
           </div>
         </motion.form>
       )}
@@ -1143,8 +1297,8 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate }
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex flex-wrap gap-1">
-                    {emp.centerIds.map(cid => (
-                      <span key={cid} className="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-600">
+                    {emp.centerIds.map((cid, idx) => (
+                      <span key={`${emp.id}-${cid}-${idx}`} className="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-600">
                         {centers.find(c => c.id === cid)?.name || cid}
                       </span>
                     ))}
@@ -1167,27 +1321,30 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate }
   );
 }
 
-function CenterManagement({ centers, onUpdate }: { centers: WorkCenter[], onUpdate: () => void }) {
+function CenterManagement({ centers, onUpdate, showSuccess, showError, confirm }: { centers: WorkCenter[], onUpdate: () => void, showSuccess: (m: string) => void, showError: (m: string) => void, confirm: (m: string, c: () => void) => void }) {
   const [editing, setEditing] = useState<Partial<WorkCenter> | null>(null);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await saveCenter(editing);
+      await saveCenter(editing!);
+      showSuccess("Centro guardado correctamente");
       setEditing(null);
     } catch (err: any) {
-      alert(err.message);
+      showError(err.message);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm("¿Estás seguro de que deseas eliminar este centro?")) {
+    confirm("¿Estás seguro de que deseas eliminar este centro?", async () => {
       try {
         await deleteCenter(id);
+        showSuccess("Centro eliminado correctamente");
+        if (editing?.id === id) setEditing(null);
       } catch (err: any) {
-        alert(err.message);
+        showError(err.message);
       }
-    }
+    });
   };
 
   return (
@@ -1195,7 +1352,7 @@ function CenterManagement({ centers, onUpdate }: { centers: WorkCenter[], onUpda
       <div className="flex justify-between items-center">
         <h3 className="text-2xl font-black text-slate-900">Centros de Trabajo</h3>
         <button 
-          onClick={() => setEditing({ id: `cent${Date.now()}`, name: '', address: '', latitude: 0, longitude: 0, radius: 100 })}
+          onClick={() => setEditing({ id: `cent${Date.now()}_${Math.random().toString(36).substring(2, 9)}`, name: '', address: '', latitude: 0, longitude: 0, radius: 100 })}
           className="bg-tipsa-blue text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-100"
         >
           <Plus className="w-5 h-5" /> Nuevo Centro
@@ -1216,11 +1373,24 @@ function CenterManagement({ centers, onUpdate }: { centers: WorkCenter[], onUpda
             <Input label="Longitud (Google Maps)" type="number" value={editing.longitude} onChange={v => setEditing({...editing, longitude: v === '' ? undefined : parseFloat(v)})} required />
             <Input label="Radio de Marcaje (Metros)" type="number" value={editing.radius} onChange={v => setEditing({...editing, radius: v === '' ? undefined : parseFloat(v)})} required />
           </div>
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 font-bold text-slate-500">Cancelar</button>
-            <button type="submit" className="bg-red-800 hover:bg-red-900 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-red-900/20 transition-colors">
-              <Save className="w-5 h-5" /> Guardar Centro
-            </button>
+          <div className="flex justify-between items-center">
+            <div className="flex gap-3">
+              {editing.id && (
+                <button 
+                  type="button" 
+                  onClick={() => handleDelete(editing.id!)} 
+                  className="px-6 py-3 font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-2"
+                >
+                  <Trash2 className="w-5 h-5" /> Eliminar Centro
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 font-bold text-slate-500">Cancelar</button>
+              <button type="submit" className="bg-red-800 hover:bg-red-900 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-red-900/20 transition-colors">
+                <Save className="w-5 h-5" /> Guardar Centro
+              </button>
+            </div>
           </div>
         </motion.form>
       )}
@@ -1257,27 +1427,30 @@ function CenterManagement({ centers, onUpdate }: { centers: WorkCenter[], onUpda
   );
 }
 
-function ContractorManagement({ contractors, onUpdate }: { contractors: Contractor[], onUpdate: () => void }) {
+function ContractorManagement({ contractors, onUpdate, showSuccess, showError, confirm }: { contractors: Contractor[], onUpdate: () => void, showSuccess: (m: string) => void, showError: (m: string) => void, confirm: (m: string, c: () => void) => void }) {
   const [editing, setEditing] = useState<Partial<Contractor> | null>(null);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await saveContractor(editing);
+      await saveContractor(editing!);
+      showSuccess("Contrata guardada correctamente");
       setEditing(null);
     } catch (err: any) {
-      alert(err.message);
+      showError(err.message);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm("¿Estás seguro de que deseas eliminar esta contrata?")) {
+    confirm("¿Estás seguro de que deseas eliminar esta contrata?", async () => {
       try {
         await deleteContractor(id);
+        showSuccess("Contrata eliminada correctamente");
+        if (editing?.id === id) setEditing(null);
       } catch (err: any) {
-        alert(err.message);
+        showError(err.message);
       }
-    }
+    });
   };
 
   return (
@@ -1285,7 +1458,7 @@ function ContractorManagement({ contractors, onUpdate }: { contractors: Contract
       <div className="flex justify-between items-center">
         <h3 className="text-2xl font-black text-slate-900">Gestión de Contratas</h3>
         <button 
-          onClick={() => setEditing({ id: `cont${Date.now()}`, name: '' })}
+          onClick={() => setEditing({ id: `cont${Date.now()}_${Math.random().toString(36).substring(2, 9)}`, name: '' })}
           className="bg-tipsa-blue text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-100"
         >
           <Plus className="w-5 h-5" /> Nueva Contrata
@@ -1302,11 +1475,24 @@ function ContractorManagement({ contractors, onUpdate }: { contractors: Contract
           <div className="grid grid-cols-1 gap-6">
             <Input label="Nombre de la Contrata" value={editing.name} onChange={v => setEditing({...editing, name: v})} required />
           </div>
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 font-bold text-slate-500">Cancelar</button>
-            <button type="submit" className="bg-tipsa-blue text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-100">
-              <Save className="w-5 h-5" /> Guardar Cambios
-            </button>
+          <div className="flex justify-between items-center">
+            <div className="flex gap-3">
+              {editing.id && (
+                <button 
+                  type="button" 
+                  onClick={() => handleDelete(editing.id!)} 
+                  className="px-6 py-3 font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-2"
+                >
+                  <Trash2 className="w-5 h-5" /> Eliminar Contrata
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 font-bold text-slate-500">Cancelar</button>
+              <button type="submit" className="bg-tipsa-blue text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-100">
+                <Save className="w-5 h-5" /> Guardar Cambios
+              </button>
+            </div>
           </div>
         </motion.form>
       )}
@@ -1340,27 +1526,30 @@ function ContractorManagement({ contractors, onUpdate }: { contractors: Contract
   );
 }
 
-function RoleManagement({ roles, onUpdate }: { roles: CustomRole[], onUpdate: () => void }) {
+function RoleManagement({ roles, onUpdate, showSuccess, showError, confirm }: { roles: CustomRole[], onUpdate: () => void, showSuccess: (m: string) => void, showError: (m: string) => void, confirm: (m: string, c: () => void) => void }) {
   const [editing, setEditing] = useState<Partial<CustomRole> | null>(null);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await saveRole(editing);
+      await saveRole(editing!);
+      showSuccess("Rol guardado correctamente");
       setEditing(null);
     } catch (err: any) {
-      alert(err.message);
+      showError(err.message);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm("¿Estás seguro de que deseas eliminar este rol?")) {
+    confirm("¿Estás seguro de que deseas eliminar este rol?", async () => {
       try {
         await deleteRole(id);
+        showSuccess("Rol eliminado correctamente");
+        if (editing?.id === id) setEditing(null);
       } catch (err: any) {
-        alert(err.message);
+        showError(err.message);
       }
-    }
+    });
   };
 
   return (
@@ -1368,7 +1557,7 @@ function RoleManagement({ roles, onUpdate }: { roles: CustomRole[], onUpdate: ()
       <div className="flex justify-between items-center">
         <h3 className="text-2xl font-black text-slate-900">Gestión de Roles</h3>
         <button 
-          onClick={() => setEditing({ id: `role${Date.now()}`, name: '', isAdmin: false })}
+          onClick={() => setEditing({ id: `role${Date.now()}_${Math.random().toString(36).substring(2, 9)}`, name: '', isAdmin: false })}
           className="bg-tipsa-blue text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-100"
         >
           <Plus className="w-5 h-5" /> Nuevo Rol
@@ -1395,11 +1584,24 @@ function RoleManagement({ roles, onUpdate }: { roles: CustomRole[], onUpdate: ()
               <label htmlFor="isAdmin" className="text-sm font-bold text-slate-700">¿Es Administrador?</label>
             </div>
           </div>
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 font-bold text-slate-500">Cancelar</button>
-            <button type="submit" className="bg-tipsa-blue text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-100">
-              <Save className="w-5 h-5" /> Guardar Cambios
-            </button>
+          <div className="flex justify-between items-center">
+            <div className="flex gap-3">
+              {editing.id && (
+                <button 
+                  type="button" 
+                  onClick={() => handleDelete(editing.id!)} 
+                  className="px-6 py-3 font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-2"
+                >
+                  <Trash2 className="w-5 h-5" /> Eliminar Rol
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 font-bold text-slate-500">Cancelar</button>
+              <button type="submit" className="bg-tipsa-blue text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-100">
+                <Save className="w-5 h-5" /> Guardar Cambios
+              </button>
+            </div>
           </div>
         </motion.form>
       )}
@@ -1425,9 +1627,12 @@ function RoleManagement({ roles, onUpdate }: { roles: CustomRole[], onUpdate: ()
                     {r.isAdmin ? 'Admin' : 'Empleado'}
                   </span>
                 </td>
-                <td className="px-6 py-4">
+                <td className="px-6 py-4 flex gap-2">
                   <button onClick={() => setEditing(r)} className="p-2 hover:bg-blue-50 text-tipsa-blue rounded-lg transition-colors">
                     <Settings className="w-5 h-5" />
+                  </button>
+                  <button onClick={() => handleDelete(r.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-lg transition-colors">
+                    <Trash2 className="w-5 h-5" />
                   </button>
                 </td>
               </tr>
@@ -1827,6 +2032,69 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
   const expectedHours = totalEmployees * 8 * (differenceInHours(parseISO(filter.endDate), parseISO(filter.startDate)) / 24 + 1);
   const absenteeism = expectedHours > 0 ? Math.max(0, ((expectedHours - totalHours) / expectedHours) * 100).toFixed(1) : "0.0";
 
+  // Calculate Turnover KPIs for the selected period
+  const periodEmployees = employees.filter(emp => {
+    const matchesCenter = !filter.centerId || emp.centerIds.includes(filter.centerId);
+    const matchesContractor = !filter.contractorId || emp.contractorId === filter.contractorId;
+    return matchesCenter && matchesContractor;
+  });
+
+  const departuresInPeriod = periodEmployees.filter(emp => {
+    if (!emp.terminationDate) return false;
+    const termDate = format(parseISO(emp.terminationDate), 'yyyy-MM-dd');
+    return termDate >= filter.startDate && termDate <= filter.endDate;
+  }).length;
+
+  const hiresInPeriod = periodEmployees.filter(emp => {
+    if (!emp.hireDate) return false;
+    const hireDate = format(parseISO(emp.hireDate), 'yyyy-MM-dd');
+    return hireDate >= filter.startDate && hireDate <= filter.endDate;
+  }).length;
+
+  const activeAtEnd = periodEmployees.filter(emp => {
+    if (!emp.terminationDate) return true;
+    return format(parseISO(emp.terminationDate), 'yyyy-MM-dd') > filter.endDate;
+  }).length;
+
+  const activeAtStart = activeAtEnd + departuresInPeriod - hiresInPeriod;
+  const avgEmployees = (activeAtStart + activeAtEnd) / 2;
+  const turnoverRate = avgEmployees > 0 ? (departuresInPeriod / avgEmployees) * 100 : 0;
+
+  // Evolution Data
+  const evolutionData = React.useMemo(() => {
+    const days = [];
+    let current = parseISO(filter.startDate);
+    const end = parseISO(filter.endDate);
+    
+    while (current <= end) {
+      const dateStr = format(current, 'yyyy-MM-dd');
+      const dayLogs = filteredLogs.filter(l => format(parseISO(l.checkIn), 'yyyy-MM-dd') === dateStr);
+      
+      const dayHours = dayLogs.reduce((acc, l) => acc + (l.checkOut ? differenceInHours(parseISO(l.checkOut), parseISO(l.checkIn)) : 0), 0);
+      const dayExtra = dayLogs.reduce((acc, l) => {
+        const emp = employees.find(e => e.id === l.employeeId);
+        const std = emp?.standardHours || 8;
+        if (l.checkOut) {
+          const worked = differenceInHours(parseISO(l.checkOut), parseISO(l.checkIn));
+          return acc + (worked > std ? worked - std : 0);
+        }
+        return acc;
+      }, 0);
+
+      const dayActive = new Set(dayLogs.map(l => l.employeeId)).size;
+      
+      days.push({
+        date: format(current, 'dd/MM'),
+        horas: parseFloat(dayHours.toFixed(1)),
+        extras: parseFloat(dayExtra.toFixed(1)),
+        empleados: dayActive
+      });
+      
+      current = new Date(current.setDate(current.getDate() + 1));
+    }
+    return days;
+  }, [filteredLogs, filter.startDate, filter.endDate, employees]);
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
@@ -1885,7 +2153,7 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-12">
           <StatCard
             icon={<Users className="text-tipsa-blue" />}
             label="Empleados Activos"
@@ -1910,6 +2178,56 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
             value={`${absenteeism}%`}
             color="red"
           />
+          <StatCard
+            icon={<LogOut className="text-orange-600" />}
+            label="Bajas Periodo"
+            value={departuresInPeriod}
+            color="orange"
+          />
+          <StatCard
+            icon={<RefreshCw className="text-purple-600" />}
+            label="Rotación"
+            value={`${turnoverRate.toFixed(1)}%`}
+            color="purple"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+            <h4 className="text-sm font-black text-slate-900 mb-6 uppercase tracking-widest">Evolución de Horas</h4>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={evolutionData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 700 }}
+                  />
+                  <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: '20px', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }} />
+                  <Line type="monotone" dataKey="horas" stroke="#1e40af" strokeWidth={3} dot={{ r: 4, fill: '#1e40af' }} activeDot={{ r: 6 }} name="Horas Totales" />
+                  <Line type="monotone" dataKey="extras" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981' }} activeDot={{ r: 6 }} name="Horas Extras" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+            <h4 className="text-sm font-black text-slate-900 mb-6 uppercase tracking-widest">Participación de Empleados</h4>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={evolutionData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700, fill: '#64748b'}} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 700 }}
+                  />
+                  <Line type="stepAfter" dataKey="empleados" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4, fill: '#8b5cf6' }} name="Empleados Activos" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1936,18 +2254,20 @@ function StatCard({ icon, label, value, color }: { icon: React.ReactNode, label:
     blue: "bg-blue-50 border-blue-100",
     emerald: "bg-emerald-50 border-emerald-100",
     "tipsa-blue": "bg-blue-50 border-blue-100",
-    red: "bg-red-50 border-red-100"
+    red: "bg-red-50 border-red-100",
+    orange: "bg-orange-50 border-orange-100",
+    purple: "bg-purple-50 border-purple-100"
   };
 
   return (
-    <div className={cn("p-8 rounded-[2rem] border shadow-sm", colors[color])}>
-      <div className="flex items-center gap-5">
-        <div className="p-4 bg-white rounded-2xl shadow-sm">
-          {React.cloneElement(icon as React.ReactElement, { className: "w-8 h-8" })}
+    <div className={cn("p-4 rounded-[1.5rem] border shadow-sm flex flex-col justify-center min-h-[90px]", colors[color])}>
+      <div className="flex items-center gap-3">
+        <div className="p-2.5 bg-white rounded-xl shadow-sm flex-shrink-0">
+          {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5" })}
         </div>
-        <div>
-          <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{label}</div>
-          <div className="text-4xl font-black text-slate-900 leading-none">{value}</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5 truncate">{label}</div>
+          <div className="text-lg font-black text-slate-900 leading-none whitespace-nowrap overflow-hidden text-ellipsis">{value}</div>
         </div>
       </div>
     </div>

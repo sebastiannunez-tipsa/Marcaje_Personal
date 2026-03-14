@@ -1,5 +1,5 @@
 {
-  "name": "Sistema Control Horario - MarSEPA",
+  "name": "Sistema Control Horario - PASeMarc",
   "description": "Sistema de registro de jornada laboral con geolocalización, dashboard de control y reportes de horas.",
   "requestFramePermissions": [
     "geolocation"
