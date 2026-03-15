@@ -29,7 +29,8 @@ import {
   UserCog,
   Key,
   Lock,
-  X
+  X,
+  Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, differenceInHours, parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
@@ -70,6 +71,58 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 };
 
+const validateDNI = (dni: string) => {
+  const dniRegex = /^[0-9]{8}[TRWAGMYFPDXBNJZSQVHLCKE]$/i;
+  const nieRegex = /^[XYZ][0-9]{7}[TRWAGMYFPDXBNJZSQVHLCKE]$/i;
+  
+  if (!dniRegex.test(dni) && !nieRegex.test(dni)) return false;
+
+  let str = dni.toUpperCase();
+  let firstChar = str.charAt(0);
+  
+  if (firstChar === 'X') str = '0' + str.substring(1);
+  else if (firstChar === 'Y') str = '1' + str.substring(1);
+  else if (firstChar === 'Z') str = '2' + str.substring(1);
+
+  const number = parseInt(str.substring(0, 8));
+  const letter = str.charAt(8);
+  const validLetters = "TRWAGMYFPDXBNJZSQVHLCKE";
+  
+  return validLetters.charAt(number % 23) === letter;
+};
+
+const calculateSimilarity = (s1: string, s2: string) => {
+  const longer = s1.length > s2.length ? s1 : s2;
+  const shorter = s1.length > s2.length ? s2 : s1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  const editDistance = (s1: string, s2: string) => {
+    s1 = s1.toLowerCase();
+    s2 = s2.toLowerCase();
+    const costs = [];
+    for (let i = 0; i <= s1.length; i++) {
+      let lastValue = i;
+      for (let j = 0; j <= s2.length; j++) {
+        if (i === 0) costs[j] = j;
+        else {
+          if (j > 0) {
+            let newValue = costs[j - 1];
+            if (s1.charAt(i - 1) !== s2.charAt(j - 1))
+              newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+            costs[j - 1] = lastValue;
+            lastValue = newValue;
+          }
+        }
+      }
+      if (i > 0) costs[s2.length] = lastValue;
+    }
+    return costs[s2.length];
+  };
+
+  return (longer.length - editDistance(longer, shorter)) / longer.length;
+};
+
 import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, subscribeToActiveSession, deleteEmployee, deleteCenter, deleteContractor, deleteRole } from './db';
 import { auth } from './firebase';
 import { onAuthStateChanged, signInAnonymously, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
@@ -82,7 +135,7 @@ export default function App() {
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [roles, setRoles] = useState<CustomRole[]>([]);
   const [view, setView] = useState<'login' | 'employee' | 'admin'>('login');
-  const [adminSubView, setAdminSubView] = useState<'dashboard' | 'employees' | 'centers' | 'reports' | 'contractors' | 'roles'>('dashboard');
+  const [adminSubView, setAdminSubView] = useState<'dashboard' | 'employees' | 'centers' | 'reports' | 'contractors' | 'roles' | 'upload'>('dashboard');
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -331,6 +384,12 @@ export default function App() {
               icon={<UserCog className="w-5 h-5" />}
               label="Roles"
             />
+            <AdminNavButton 
+              active={adminSubView === 'upload'} 
+              onClick={() => setAdminSubView('upload')}
+              icon={<Upload className="w-5 h-5" />}
+              label="Subida de Datos"
+            />
           </aside>
         )}
 
@@ -364,6 +423,7 @@ export default function App() {
                 {adminSubView === 'kpis' && <KPIsView employees={employees} centers={centers} contractors={contractors} />}
                 {adminSubView === 'contractors' && <ContractorManagement contractors={contractors} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'roles' && <RoleManagement roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
+                {adminSubView === 'upload' && <DataUploadView employees={employees} centers={centers} contractors={contractors} roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} />}
               </div>
             )}
           </AnimatePresence>
@@ -1113,10 +1173,29 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (editing && editing.dni) {
+      if (!editing) return;
+
+      // 1. Validate DNI/NIE
+      if (editing.dni && !validateDNI(editing.dni)) {
+        throw new Error("El DNI o NIE introducido no es válido (formato o letra incorrecta).");
+      }
+
+      // 2. Check for duplicate DNI
+      if (editing.dni) {
         const isDuplicateDni = employees.some(emp => emp.dni === editing.dni && emp.id !== editing.id);
         if (isDuplicateDni) {
           throw new Error("El DNI/NIE ya está registrado en otro empleado.");
+        }
+      }
+
+      // 3. Check for name similarity (80% threshold)
+      if (editing.name) {
+        const similarEmployee = employees.find(emp => 
+          emp.id !== editing.id && 
+          calculateSimilarity(emp.name, editing.name!) >= 0.8
+        );
+        if (similarEmployee) {
+          throw new Error(`El nombre es demasiado similar al empleado existente: ${similarEmployee.name} (Similitud >= 80%)`);
         }
       }
 
@@ -1170,6 +1249,7 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
             <Input label="Fecha de Alta" type="date" value={editing.hireDate} onChange={v => setEditing({...editing, hireDate: v})} />
             <Input label="Fecha de Baja" type="date" value={editing.terminationDate} onChange={v => setEditing({...editing, terminationDate: v})} />
             <Input label="Horas Jornada" type="number" value={editing.standardHours} onChange={v => setEditing({...editing, standardHours: parseFloat(v)})} />
+            <Input label="Email" type="email" value={editing.email} onChange={v => setEditing({...editing, email: v})} />
             
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Contrata</label>
@@ -2229,6 +2309,192 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function DataUploadView({ employees, centers, contractors, roles, onUpdate, showSuccess, showError }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[], roles: CustomRole[], onUpdate: () => void, showSuccess: (m: string) => void, showError: (m: string) => void }) {
+  const [importing, setImporting] = useState(false);
+  const [importResults, setImportResults] = useState<{ success: number, errors: { row: number, name: string, reason: string }[] } | null>(null);
+
+  const downloadTemplate = () => {
+    const template = [
+      {
+        Nombre: 'Juan Pérez',
+        DNI_NIE: '12345678Z',
+        Area: 'Almacén',
+        Turno: 'Mañana',
+        Horas_Jornada: 8,
+        Contrata: 'Nombre Contrata (o vacío para Interno)',
+        Rol: 'Nombre del Rol (opcional)',
+        Email: 'juan@example.com'
+      }
+    ];
+    const ws = XLSX.utils.json_to_sheet(template);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
+    XLSX.writeFile(wb, "plantilla_importacion_personal.xlsx");
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportResults(null);
+    const reader = new FileReader();
+
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws) as any[];
+
+        let successCount = 0;
+        const errors: { row: number, name: string, reason: string }[] = [];
+
+        for (let i = 0; i < data.length; i++) {
+          const row = data[i];
+          const rowNum = i + 2; // +1 for 0-index, +1 for header row
+          const name = row.Nombre || 'Desconocido';
+          const dni = String(row.DNI_NIE || '').trim();
+
+          try {
+            if (!name || name === 'Desconocido') throw new Error("Nombre es obligatorio");
+            if (!dni) throw new Error("DNI/NIE es obligatorio");
+
+            // 1. Validate DNI/NIE
+            if (!validateDNI(dni)) {
+              throw new Error("DNI o NIE no válido");
+            }
+
+            // 2. Check for duplicate DNI
+            if (employees.some(emp => emp.dni === dni)) {
+              throw new Error("DNI/NIE ya registrado");
+            }
+
+            // 3. Check for name similarity
+            const similar = employees.find(emp => calculateSimilarity(emp.name, name) >= 0.8);
+            if (similar) {
+              throw new Error(`Nombre demasiado similar a ${similar.name} (>= 80%)`);
+            }
+
+            // Find contractor and role by name
+            const contractor = contractors.find(c => c.name.toLowerCase() === String(row.Contrata || '').toLowerCase());
+            const role = roles.find(r => r.name.toLowerCase() === String(row.Rol || '').toLowerCase());
+
+            const newEmployee: Employee = {
+              id: `emp_${Date.now()}_${i}`,
+              name,
+              dni,
+              area: row.Area || '',
+              shift: row.Turno || '',
+              standardHours: parseFloat(row.Horas_Jornada) || 8,
+              contractorId: contractor?.id || null,
+              roleId: role?.id || null,
+              role: 'employee',
+              centerIds: [],
+              email: row.Email || ''
+            };
+
+            await saveEmployee(newEmployee);
+            successCount++;
+          } catch (err: any) {
+            errors.push({ row: rowNum, name, reason: err.message });
+          }
+        }
+
+        setImportResults({ success: successCount, errors });
+        if (successCount > 0) {
+          onUpdate();
+          showSuccess(`Importación finalizada: ${successCount} registros importados.`);
+        }
+      } catch (err: any) {
+        showError("Error al procesar el archivo Excel");
+      } finally {
+        setImporting(false);
+      }
+    };
+
+    reader.readAsBinaryString(file);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm">
+        <h3 className="text-2xl font-black text-slate-900 mb-6">Subida Masiva de Datos</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="p-8 rounded-3xl bg-slate-50 border border-slate-100 flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm mb-4">
+              <Download className="w-8 h-8 text-tipsa-blue" />
+            </div>
+            <h4 className="font-black text-slate-900 mb-2">1. Descargar Plantilla</h4>
+            <p className="text-sm text-slate-500 mb-6">Descarga el archivo Excel con el formato correcto para rellenar los datos de los empleados.</p>
+            <button 
+              onClick={downloadTemplate}
+              className="bg-white text-tipsa-blue border-2 border-tipsa-blue px-6 py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors"
+            >
+              Descargar Excel
+            </button>
+          </div>
+
+          <div className="p-8 rounded-3xl bg-slate-50 border border-slate-100 flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm mb-4">
+              <Upload className="w-8 h-8 text-emerald-600" />
+            </div>
+            <h4 className="font-black text-slate-900 mb-2">2. Importar Datos</h4>
+            <p className="text-sm text-slate-500 mb-6">Sube el archivo Excel completado. El sistema validará DNI y similitud de nombres automáticamente.</p>
+            <label className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold cursor-pointer hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-100">
+              {importing ? 'Procesando...' : 'Seleccionar Archivo'}
+              <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="hidden" disabled={importing} />
+            </label>
+          </div>
+        </div>
+
+        {importResults && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-12 space-y-6">
+            <div className="flex items-center gap-4 p-6 bg-emerald-50 border border-emerald-100 rounded-2xl">
+              <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+              <div>
+                <div className="font-black text-emerald-900">Importación Completada</div>
+                <div className="text-sm text-emerald-700 font-bold">{importResults.success} empleados añadidos correctamente.</div>
+              </div>
+            </div>
+
+            {importResults.errors.length > 0 && (
+              <div className="bg-white border border-red-100 rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-red-50 p-4 border-b border-red-100 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-600" />
+                  <span className="font-black text-red-900 uppercase text-xs tracking-widest">Informe de Errores ({importResults.errors.length})</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fila</th>
+                        <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nombre</th>
+                        <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Motivo del Error</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {importResults.errors.map((err, idx) => (
+                        <tr key={idx} className="hover:bg-red-50/30 transition-colors">
+                          <td className="px-6 py-4 text-xs font-bold text-slate-500">{err.row}</td>
+                          <td className="px-6 py-4 text-sm font-bold text-slate-900">{err.name}</td>
+                          <td className="px-6 py-4 text-xs font-bold text-red-600">{err.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
       </div>
     </div>
   );

@@ -25,6 +25,7 @@ export interface Employee {
   terminationDate?: string;
   standardHours?: number;
   password?: string;
+  email?: string;
 }
 
 export interface Contractor {
