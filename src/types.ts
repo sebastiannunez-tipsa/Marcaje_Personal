@@ -9,6 +9,8 @@ export interface AttendanceRecord {
   distance: number | null;
   status: 'active' | 'completed';
   centerId: string;
+  modifiedBy?: string;
+  modifiedAt?: string;
 }
 
 export interface Employee {
@@ -25,7 +27,6 @@ export interface Employee {
   terminationDate?: string;
   standardHours?: number;
   password?: string;
-  email?: string;
 }
 
 export interface Contractor {

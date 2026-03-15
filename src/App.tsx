@@ -123,7 +123,7 @@ const calculateSimilarity = (s1: string, s2: string) => {
   return (longer.length - editDistance(longer, shorter)) / longer.length;
 };
 
-import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, subscribeToActiveSession, deleteEmployee, deleteCenter, deleteContractor, deleteRole } from './db';
+import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, updateAttendanceRecord, subscribeToActiveSession, deleteEmployee, deleteCenter, deleteContractor, deleteRole } from './db';
 import { auth } from './firebase';
 import { onAuthStateChanged, signInAnonymously, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 
@@ -416,7 +416,7 @@ export default function App() {
 
             {view === 'admin' && currentUser && (
               <div className="space-y-6">
-                {adminSubView === 'dashboard' && <AdminDashboard employees={employees} />}
+                {adminSubView === 'dashboard' && <AdminDashboard employees={employees} centers={centers} currentUser={currentUser} />}
                 {adminSubView === 'employees' && <EmployeeManagement employees={employees} centers={centers} contractors={contractors} roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'centers' && <CenterManagement centers={centers} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'reports' && <ReportsView employees={employees} centers={centers} contractors={contractors} />}
@@ -1032,8 +1032,148 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
   );
 }
 
-function AdminDashboard({ employees }: { employees: Employee[] }) {
+function AttendanceEditModal({ 
+  record, 
+  employee, 
+  center, 
+  onClose, 
+  onSave, 
+  currentUser 
+}: { 
+  record: AttendanceRecord, 
+  employee: Employee | undefined, 
+  center: WorkCenter | undefined, 
+  onClose: () => void, 
+  onSave: (updated: Partial<AttendanceRecord>) => void,
+  currentUser: Employee | null
+}) {
+  const [checkIn, setCheckIn] = useState(record.checkIn.substring(0, 16));
+  const [checkOut, setCheckOut] = useState(record.checkOut ? record.checkOut.substring(0, 16) : '');
+
+  const hours = checkOut ? differenceInHours(parseISO(checkOut), parseISO(checkIn)) : 0;
+  const stdHours = employee?.standardHours || 8;
+  const extraHours = hours > stdHours ? hours - stdHours : 0;
+  const lessHours = hours < stdHours ? stdHours - hours : 0;
+
+  const handleSave = () => {
+    onSave({
+      id: record.id,
+      checkIn: new Date(checkIn).toISOString(),
+      checkOut: checkOut ? new Date(checkOut).toISOString() : null,
+      modifiedBy: currentUser?.name || 'Admin',
+      modifiedAt: new Date().toISOString()
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-white rounded-[2.5rem] p-8 max-w-2xl w-full shadow-2xl border border-slate-100 overflow-y-auto max-h-[90vh]"
+      >
+        <div className="flex justify-between items-start mb-8">
+          <div>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Editar Registro</h3>
+            <p className="text-slate-500 font-bold">Detalles de jornada de {employee?.name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+            <X className="w-6 h-6 text-slate-400" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Empleado</div>
+              <div className="font-bold text-slate-900">{employee?.name} ({employee?.dni})</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Centro</div>
+              <div className="font-bold text-slate-900">{center?.name}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Estado</div>
+              <div className={cn(
+                "font-black uppercase text-xs",
+                record.status === 'active' ? "text-emerald-600" : "text-slate-500"
+              )}>
+                {record.status === 'active' ? 'Activo' : 'Cerrado'}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100">
+              <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Total Horas</div>
+              <div className="text-2xl font-black text-tipsa-blue">{hours.toFixed(1)}h</div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
+                <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Extras</div>
+                <div className="text-xl font-black text-emerald-600">+{extraHours.toFixed(1)}h</div>
+              </div>
+              <div className="p-4 rounded-2xl bg-red-50 border border-red-100">
+                <div className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Menos</div>
+                <div className="text-xl font-black text-red-600">-{lessHours.toFixed(1)}h</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entrada</label>
+            <input 
+              type="datetime-local" 
+              value={checkIn}
+              onChange={e => setCheckIn(e.target.value)}
+              className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Salida</label>
+            <input 
+              type="datetime-local" 
+              value={checkOut}
+              onChange={e => setCheckOut(e.target.value)}
+              className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue"
+            />
+          </div>
+        </div>
+
+        {record.modifiedBy && (
+          <div className="mb-8 p-4 rounded-2xl bg-amber-50 border border-amber-100 flex items-center gap-3">
+            <History className="w-5 h-5 text-amber-500" />
+            <div className="text-xs font-bold text-amber-700">
+              Última modificación por <span className="font-black">{record.modifiedBy}</span> el {format(parseISO(record.modifiedAt!), 'd MMM, HH:mm', { locale: es })}
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-4">
+          <button 
+            onClick={onClose}
+            className="flex-1 py-4 px-6 rounded-2xl font-black text-sm text-slate-500 hover:bg-slate-50 transition-all uppercase tracking-widest"
+          >
+            Cancelar
+          </button>
+          <button 
+            onClick={handleSave}
+            className="flex-1 py-4 px-6 rounded-2xl font-black text-sm bg-tipsa-blue text-white shadow-lg shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest flex items-center justify-center gap-2"
+          >
+            <Save className="w-5 h-5" /> Guardar Cambios
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function AdminDashboard({ employees, centers, currentUser }: { employees: Employee[], centers: WorkCenter[], currentUser: Employee | null }) {
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
+  const [selectedLog, setSelectedLog] = useState<AttendanceRecord | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [dateRange, setDateRange] = useState({
     from: format(new Date(), 'yyyy-MM-dd'),
     to: format(new Date(), 'yyyy-MM-dd')
@@ -1070,13 +1210,6 @@ function AdminDashboard({ employees }: { employees: Employee[] }) {
       }
     });
 
-    const departuresThisMonth = employees.filter(emp => {
-      if (!emp.terminationDate) return false;
-      const termDate = parseISO(emp.terminationDate);
-      const now = new Date();
-      return termDate.getMonth() === now.getMonth() && termDate.getFullYear() === now.getFullYear();
-    }).length;
-
     return {
       totalEmployees: new Set(filteredLogs.map(l => l.employeeId)).size,
       totalHours,
@@ -1090,8 +1223,43 @@ function AdminDashboard({ employees }: { employees: Employee[] }) {
     hours: log.checkOut ? differenceInHours(parseISO(log.checkOut), parseISO(log.checkIn)) : 0
   }));
 
+  const logsByCenter = React.useMemo(() => {
+    const grouped: { [key: string]: AttendanceRecord[] } = {};
+    const search = searchTerm.trim().toLowerCase();
+    const isSearching = search.length >= 3;
+
+    filteredLogs.forEach(log => {
+      if (isSearching && !log.employeeName.toLowerCase().includes(search)) {
+        return;
+      }
+      if (!grouped[log.centerId]) grouped[log.centerId] = [];
+      grouped[log.centerId].push(log);
+    });
+    return grouped;
+  }, [filteredLogs, searchTerm]);
+
+  const handleUpdateRecord = async (updated: Partial<AttendanceRecord>) => {
+    try {
+      await updateAttendanceRecord(updated);
+      setSelectedLog(null);
+    } catch (err) {
+      console.error("Error updating record:", err);
+    }
+  };
+
   return (
     <div className="space-y-8">
+      {selectedLog && (
+        <AttendanceEditModal 
+          record={selectedLog}
+          employee={employees.find(e => e.id === selectedLog.employeeId)}
+          center={centers.find(c => c.id === selectedLog.centerId)}
+          onClose={() => setSelectedLog(null)}
+          onSave={handleUpdateRecord}
+          currentUser={currentUser}
+        />
+      )}
+
       <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row gap-6 items-end">
         <div className="flex-1 space-y-2">
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Desde</label>
@@ -1136,30 +1304,71 @@ function AdminDashboard({ employees }: { employees: Employee[] }) {
           </div>
         </div>
 
-        <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm">
-          <h3 className="text-xl font-black text-slate-900 mb-8">Actividad Reciente</h3>
-          <div className="space-y-4 max-h-[300px] overflow-auto pr-2 custom-scrollbar">
-            {logs.map(log => (
-              <div key={log.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center font-bold text-slate-400">
-                    {log.employeeName[0]}
-                  </div>
-                  <div>
-                    <div className="font-bold text-slate-900 text-sm">{log.employeeName}</div>
-                    <div className="text-[10px] font-bold text-slate-400 uppercase">
-                      {format(parseISO(log.checkIn), 'd MMM, HH:mm', { locale: es })}
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
+            <h3 className="text-xl font-black text-slate-900">Actividad por Centro</h3>
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input 
+                type="text"
+                placeholder="Buscar mozo (mín. 3 letras)..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-white font-bold text-xs outline-none focus:ring-2 focus:ring-tipsa-blue transition-all"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-6 max-h-[500px] overflow-auto pr-2 custom-scrollbar">
+            {centers.map(center => {
+              const centerLogs = logsByCenter[center.id] || [];
+              if (centerLogs.length === 0) return null;
+
+              return (
+                <div key={center.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-tipsa-blue/10 flex items-center justify-center">
+                        <Building2 className="w-5 h-5 text-tipsa-blue" />
+                      </div>
+                      <h4 className="font-black text-slate-900">{center.name}</h4>
                     </div>
+                    <span className="px-3 py-1 rounded-full bg-slate-100 text-[10px] font-black text-slate-500 uppercase">
+                      {centerLogs.length} Registros
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {centerLogs.slice(0, 5).map(log => (
+                      <button 
+                        key={log.id} 
+                        onClick={() => setSelectedLog(log)}
+                        className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 flex justify-between items-center hover:bg-slate-100 transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-bold text-slate-400 group-hover:border-tipsa-blue group-hover:text-tipsa-blue transition-colors">
+                            {log.employeeName[0]}
+                          </div>
+                          <div className="text-left">
+                            <div className="flex items-center gap-2">
+                              <div className="font-bold text-slate-900 text-sm">{log.employeeName}</div>
+                              <span className={cn(
+                                "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter",
+                                log.status === 'active' ? "bg-emerald-500 text-white" : "bg-slate-300 text-slate-900"
+                              )}>
+                                {log.status === 'active' ? 'Activo' : 'Inactivo'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase">
+                              {format(parseISO(log.checkIn), 'HH:mm')} - {log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : '...'}
+                            </div>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-tipsa-blue transition-colors" />
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div className={cn(
-                  "px-3 py-1 rounded-full text-[10px] font-black uppercase",
-                  log.status === 'active' ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"
-                )}>
-                  {log.status === 'active' ? 'Activo' : 'Cerrado'}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -1249,7 +1458,6 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
             <Input label="Fecha de Alta" type="date" value={editing.hireDate} onChange={v => setEditing({...editing, hireDate: v})} />
             <Input label="Fecha de Baja" type="date" value={editing.terminationDate} onChange={v => setEditing({...editing, terminationDate: v})} />
             <Input label="Horas Jornada" type="number" value={editing.standardHours} onChange={v => setEditing({...editing, standardHours: parseFloat(v)})} />
-            <Input label="Email" type="email" value={editing.email} onChange={v => setEditing({...editing, email: v})} />
             
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Contrata</label>
@@ -2326,9 +2534,12 @@ function DataUploadView({ employees, centers, contractors, roles, onUpdate, show
         Area: 'Almacén',
         Turno: 'Mañana',
         Horas_Jornada: 8,
+        Fecha_Alta: '2024-01-01',
+        Fecha_Baja: '',
         Contrata: 'Nombre Contrata (o vacío para Interno)',
         Rol: 'Nombre del Rol (opcional)',
-        Email: 'juan@example.com'
+        Centro_Trabajo: 'Zal, Tarragona, Barbera...',
+        Tipo_Acceso: 'employee'
       }
     ];
     const ws = XLSX.utils.json_to_sheet(template);
@@ -2386,6 +2597,12 @@ function DataUploadView({ employees, centers, contractors, roles, onUpdate, show
             const contractor = contractors.find(c => c.name.toLowerCase() === String(row.Contrata || '').toLowerCase());
             const role = roles.find(r => r.name.toLowerCase() === String(row.Rol || '').toLowerCase());
 
+            // Partial matching for Work Centers
+            const centerNameInput = String(row.Centro_Trabajo || '').toLowerCase().trim();
+            const matchedCenters = centerNameInput 
+              ? centers.filter(c => c.name.toLowerCase().includes(centerNameInput))
+              : [];
+
             const newEmployee: Employee = {
               id: `emp_${Date.now()}_${i}`,
               name,
@@ -2393,11 +2610,12 @@ function DataUploadView({ employees, centers, contractors, roles, onUpdate, show
               area: row.Area || '',
               shift: row.Turno || '',
               standardHours: parseFloat(row.Horas_Jornada) || 8,
+              hireDate: row.Fecha_Alta || format(new Date(), 'yyyy-MM-dd'),
+              terminationDate: row.Fecha_Baja || '',
               contractorId: contractor?.id || null,
               roleId: role?.id || null,
-              role: 'employee',
-              centerIds: [],
-              email: row.Email || ''
+              role: (row.Tipo_Acceso === 'admin' ? 'admin' : 'employee'),
+              centerIds: matchedCenters.map(c => c.id)
             };
 
             await saveEmployee(newEmployee);

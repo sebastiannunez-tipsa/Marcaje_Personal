@@ -190,6 +190,16 @@ export const checkOut = async (recordId: string, checkOutTime: string) => {
   }
 };
 
+export const updateAttendanceRecord = async (record: Partial<AttendanceRecord>) => {
+  try {
+    if (!record.id) throw new Error("ID de registro requerido");
+    const { id, ...data } = record;
+    await updateDoc(doc(db, 'attendance', id.toString()), data);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `attendance/${record.id}`);
+  }
+};
+
 export const subscribeToActiveSession = (
   employeeId: string,
   callback: (session: AttendanceRecord | null) => void
