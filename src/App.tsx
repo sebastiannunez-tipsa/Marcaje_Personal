@@ -33,7 +33,7 @@ import {
   Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format, differenceInHours, parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { format, differenceInHours, differenceInMinutes, parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
   BarChart, 
@@ -123,7 +123,7 @@ const calculateSimilarity = (s1: string, s2: string) => {
   return (longer.length - editDistance(longer, shorter)) / longer.length;
 };
 
-import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, updateAttendanceRecord, subscribeToActiveSession, deleteEmployee, deleteCenter, deleteContractor, deleteRole } from './db';
+import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, updateAttendanceRecord, subscribeToActiveSession, subscribeToAttendanceRange, deleteEmployee, deleteCenter, deleteContractor, deleteRole } from './db';
 import { auth } from './firebase';
 import { onAuthStateChanged, signInAnonymously, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 
@@ -827,6 +827,9 @@ function AdminNavButton({ active, onClick, icon, label }: { active: boolean, onC
 
 function EmployeeView({ employee, centers, roles, contractors, initialCenterId, onLogout }: { employee: Employee, centers: WorkCenter[], roles: CustomRole[], contractors: Contractor[], initialCenterId?: string, onLogout: () => void }) {
   const [activeSession, setActiveSession] = useState<AttendanceRecord | null>(null);
+  const [lastSession, setLastSession] = useState<AttendanceRecord | null>(null);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [backupName, setBackupName] = useState('');
   const [selectedCenter, setSelectedCenter] = useState<WorkCenter | null>(
     centers.find(c => c.id === initialCenterId) || null
   );
@@ -847,18 +850,46 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
         setSelectedCenter(centers.find(c => c.id === session.centerId) || null);
       }
     });
-    return () => unsub();
+
+    // Fetch last session to check 30min margin
+    const unsubLast = subscribeToCollection<AttendanceRecord>('attendance', (records) => {
+      const empRecords = records
+        .filter(r => r.employeeId === employee.id && r.status === 'completed')
+        .sort((a, b) => new Date(b.checkOut!).getTime() - new Date(a.checkOut!).getTime());
+      setLastSession(empRecords[0] || null);
+    });
+
+    return () => {
+      unsub();
+      unsubLast();
+    };
   }, [employee.id, centers]);
 
-  const handleCheckIn = async () => {
+  const handleCheckIn = async (realBackupName?: string) => {
+    const actualBackupName = typeof realBackupName === 'string' ? realBackupName : undefined;
     if (!selectedCenter) {
       setError("Por favor, selecciona un centro de trabajo.");
       return;
     }
+
+    const isBackup = employee.name.toLowerCase().includes('backup') && employee.dni.toLowerCase() === 'backup';
+    if (isBackup && !actualBackupName) {
+      setShowBackupModal(true);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccess(null);
     try {
+      // Check 30 min margin
+      if (lastSession && lastSession.checkOut) {
+        const diff = differenceInMinutes(new Date(), parseISO(lastSession.checkOut));
+        if (diff < 30) {
+          throw new Error(`Debes esperar 30 minutos entre jornadas. Faltan ${30 - diff} minutos.`);
+        }
+      }
+
       const pos = await new Promise<GeolocationPosition>((res, rej) => {
         const timeoutId = setTimeout(() => rej(new Error("Tiempo de espera agotado al obtener ubicación. Revisa los permisos de GPS.")), 10000);
         navigator.geolocation.getCurrentPosition(
@@ -883,10 +914,12 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
         distance: dist,
         checkIn: new Date().toISOString(),
         checkOut: null,
-        status: 'active'
+        status: 'active',
+        backupRealName: actualBackupName
       });
       
       setSuccess("¡Entrada registrada con éxito!");
+      setShowBackupModal(false);
       setTimeout(() => onLogout(), 2000);
     } catch (err: any) {
       setError(err.message || "Error desconocido al registrar entrada");
@@ -913,6 +946,50 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl mx-auto w-full">
+      {showBackupModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-md">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100"
+          >
+            <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tight">Identificación Backup</h3>
+            <p className="text-slate-500 font-bold mb-6">Por favor, introduce tu nombre completo para este registro.</p>
+            
+            <div className="space-y-4 mb-8">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nombre Completo (Máx. 30 caracteres)</label>
+                <input 
+                  type="text" 
+                  maxLength={30}
+                  value={backupName}
+                  onChange={e => setBackupName(e.target.value)}
+                  placeholder="Ej: Juan Pérez García"
+                  className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setShowBackupModal(false)}
+                className="flex-1 py-4 px-6 rounded-2xl font-black text-sm text-slate-500 hover:bg-slate-50 transition-all uppercase tracking-widest"
+              >
+                Cancelar
+              </button>
+              <button 
+                disabled={backupName.trim().length < 3}
+                onClick={() => handleCheckIn(backupName.trim())}
+                className="flex-1 py-4 px-6 rounded-2xl font-black text-sm bg-tipsa-blue text-white shadow-lg shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest disabled:opacity-50 disabled:hover:scale-100"
+              >
+                Confirmar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl md:rounded-[3rem] shadow-2xl shadow-slate-200 p-6 md:p-12 border border-slate-100">
         <div className="text-center mb-10">
           <h1 className="text-3xl md:text-5xl font-black text-slate-900 mb-4 uppercase tracking-tight">{employee.name}</h1>
@@ -1003,7 +1080,7 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
           </div>
 
           <button
-            onClick={activeSession ? handleCheckOut : handleCheckIn}
+            onClick={() => activeSession ? handleCheckOut() : handleCheckIn()}
             disabled={loading || (!activeSession && !selectedCenter)}
             className={cn(
               "w-full py-6 md:py-10 rounded-2xl md:rounded-[2.5rem] font-black text-xl md:text-3xl shadow-xl transition-all flex items-center justify-center gap-4",
@@ -1049,6 +1126,7 @@ function AttendanceEditModal({
 }) {
   const [checkIn, setCheckIn] = useState(record.checkIn.substring(0, 16));
   const [checkOut, setCheckOut] = useState(record.checkOut ? record.checkOut.substring(0, 16) : '');
+  const [error, setError] = useState<string | null>(null);
 
   const hours = checkOut ? differenceInHours(parseISO(checkOut), parseISO(checkIn)) : 0;
   const stdHours = employee?.standardHours || 8;
@@ -1056,10 +1134,15 @@ function AttendanceEditModal({
   const lessHours = hours < stdHours ? stdHours - hours : 0;
 
   const handleSave = () => {
+    if (checkOut && new Date(checkOut) <= new Date(checkIn)) {
+      setError("La fecha de salida debe ser posterior a la de entrada.");
+      return;
+    }
     onSave({
       id: record.id,
       checkIn: new Date(checkIn).toISOString(),
       checkOut: checkOut ? new Date(checkOut).toISOString() : null,
+      status: checkOut ? 'completed' : 'active',
       modifiedBy: currentUser?.name || 'Admin',
       modifiedAt: new Date().toISOString()
     });
@@ -1082,11 +1165,24 @@ function AttendanceEditModal({
           </button>
         </div>
 
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <p className="font-bold text-xs">{error}</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="space-y-4">
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Empleado</div>
               <div className="font-bold text-slate-900">{employee?.name} ({employee?.dni})</div>
+              {record.backupRealName && (
+                <div className="mt-2 pt-2 border-t border-slate-200">
+                  <div className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Identificado como</div>
+                  <div className="text-sm font-black text-amber-700">{record.backupRealName}</div>
+                </div>
+              )}
             </div>
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Centro</div>
@@ -1174,20 +1270,18 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
   const [selectedLog, setSelectedLog] = useState<AttendanceRecord | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [recordsLimit, setRecordsLimit] = useState(10);
   const [dateRange, setDateRange] = useState({
     from: format(new Date(), 'yyyy-MM-dd'),
     to: format(new Date(), 'yyyy-MM-dd')
   });
 
   useEffect(() => {
-    const unsub = subscribeToCollection<AttendanceRecord>('attendance', setLogs);
+    const unsub = subscribeToAttendanceRange(dateRange.from, dateRange.to, setLogs);
     return () => unsub();
-  }, []);
+  }, [dateRange.from, dateRange.to]);
 
-  const filteredLogs = logs.filter(log => {
-    const logDate = format(parseISO(log.checkIn), 'yyyy-MM-dd');
-    return logDate >= dateRange.from && logDate <= dateRange.to;
-  });
+  const filteredLogs = logs;
 
   const stats = React.useMemo(() => {
     let totalHours = 0;
@@ -1235,6 +1329,12 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
       if (!grouped[log.centerId]) grouped[log.centerId] = [];
       grouped[log.centerId].push(log);
     });
+
+    // Sort by checkIn ascending (oldest first)
+    Object.keys(grouped).forEach(centerId => {
+      grouped[centerId].sort((a, b) => new Date(a.checkIn).getTime() - new Date(b.checkIn).getTime());
+    });
+
     return grouped;
   }, [filteredLogs, searchTerm]);
 
@@ -1307,15 +1407,26 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
             <h3 className="text-xl font-black text-slate-900">Actividad por Centro</h3>
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input 
-                type="text"
-                placeholder="Buscar mozo (mín. 3 letras)..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-white font-bold text-xs outline-none focus:ring-2 focus:ring-tipsa-blue transition-all"
-              />
+            <div className="flex items-center gap-2 flex-1 max-w-md">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input 
+                  type="text"
+                  placeholder="Buscar mozo..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-white font-bold text-xs outline-none focus:ring-2 focus:ring-tipsa-blue transition-all"
+                />
+              </div>
+              <select 
+                value={recordsLimit}
+                onChange={e => setRecordsLimit(Number(e.target.value))}
+                className="p-2 rounded-xl border border-slate-200 bg-white font-black text-[10px] outline-none focus:ring-2 focus:ring-tipsa-blue transition-all uppercase tracking-widest"
+              >
+                <option value={10}>10 Reg.</option>
+                <option value={25}>25 Reg.</option>
+                <option value={50}>50 Reg.</option>
+              </select>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-6 max-h-[500px] overflow-auto pr-2 custom-scrollbar">
@@ -1337,11 +1448,16 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
                     </span>
                   </div>
                   <div className="space-y-3">
-                    {centerLogs.slice(0, 5).map(log => (
+                    {centerLogs.slice(0, recordsLimit).map(log => (
                       <button 
                         key={log.id} 
                         onClick={() => setSelectedLog(log)}
-                        className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 flex justify-between items-center hover:bg-slate-100 transition-all group"
+                        className={cn(
+                          "w-full p-4 rounded-2xl border flex justify-between items-center transition-all group",
+                          log.status === 'active' 
+                            ? "bg-slate-200/70 border-slate-300 hover:bg-slate-200" 
+                            : "bg-slate-50 border-slate-100 hover:bg-slate-100"
+                        )}
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-bold text-slate-400 group-hover:border-tipsa-blue group-hover:text-tipsa-blue transition-colors">
@@ -1349,7 +1465,12 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
                           </div>
                           <div className="text-left">
                             <div className="flex items-center gap-2">
-                              <div className="font-bold text-slate-900 text-sm">{log.employeeName}</div>
+                              <div className="font-bold text-slate-900 text-sm">
+                                {log.employeeName}
+                              </div>
+                              {log.backupRealName && (
+                                <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[7px] font-black uppercase">Backup</span>
+                              )}
                               <span className={cn(
                                 "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter",
                                 log.status === 'active' ? "bg-emerald-500 text-white" : "bg-slate-300 text-slate-900"
@@ -1357,6 +1478,11 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
                                 {log.status === 'active' ? 'Activo' : 'Inactivo'}
                               </span>
                             </div>
+                            {log.backupRealName && (
+                              <div className="text-[10px] font-black text-amber-600 uppercase tracking-tight">
+                                {log.backupRealName}
+                              </div>
+                            )}
                             <div className="text-[10px] font-bold text-slate-400 uppercase">
                               {format(parseISO(log.checkIn), 'HH:mm')} - {log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : '...'}
                             </div>
@@ -1384,21 +1510,51 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
     try {
       if (!editing) return;
 
+      const isBackup = editing.name?.toLowerCase().includes('backup') && editing.dni?.toLowerCase() === 'backup';
+
       // 1. Validate DNI/NIE
-      if (editing.dni && !validateDNI(editing.dni)) {
+      if (!isBackup && editing.dni && !validateDNI(editing.dni)) {
         throw new Error("El DNI o NIE introducido no es válido (formato o letra incorrecta).");
       }
 
       // 2. Check for duplicate DNI
       if (editing.dni) {
-        const isDuplicateDni = employees.some(emp => emp.dni === editing.dni && emp.id !== editing.id);
-        if (isDuplicateDni) {
-          throw new Error("El DNI/NIE ya está registrado en otro empleado.");
+        if (isBackup) {
+          // One backup per contractor per center
+          const contractorId = editing.contractorId || '';
+          const centerIds = editing.centerIds || [];
+          
+          for (const centerId of centerIds) {
+            const existingBackup = employees.find(emp => 
+              emp.id !== editing.id &&
+              emp.dni.toLowerCase() === 'backup' &&
+              emp.name.toLowerCase().includes('backup') &&
+              (emp.contractorId || '') === contractorId &&
+              emp.centerIds.includes(centerId)
+            );
+            if (existingBackup) {
+              const centerName = centers.find(c => c.id === centerId)?.name || centerId;
+              throw new Error(`Ya existe un empleado de Backup para esta contrata en el centro ${centerName}.`);
+            }
+          }
+        } else {
+          const GENERIC_DNI = '12345678Z';
+          if (editing.dni.toUpperCase() === GENERIC_DNI) {
+            const genericCount = employees.filter(emp => emp.dni === GENERIC_DNI && emp.id !== editing.id).length;
+            if (genericCount >= 2) {
+              throw new Error(`El DNI genérico ${GENERIC_DNI} ya está siendo usado por 2 empleados. Debes usar el DNI real.`);
+            }
+          } else {
+            const isDuplicateDni = employees.some(emp => emp.dni === editing.dni && emp.id !== editing.id);
+            if (isDuplicateDni) {
+              throw new Error("El DNI/NIE ya está registrado en otro empleado.");
+            }
+          }
         }
       }
 
       // 3. Check for name similarity (80% threshold)
-      if (editing.name) {
+      if (!isBackup && editing.name) {
         const similarEmployee = employees.find(emp => 
           emp.id !== editing.id && 
           calculateSimilarity(emp.name, editing.name!) >= 0.8
@@ -2012,10 +2168,11 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
     
     const tableData = filteredLogs.map(log => {
       const { workedHours, stdHours, diff } = getLogData(log);
+      const displayName = log.backupRealName ? `${log.employeeName} (${log.backupRealName})` : log.employeeName;
       return [
         format(parseISO(log.checkIn), 'dd/MM/yy HH:mm'),
         log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso',
-        log.employeeName,
+        displayName,
         stdHours + 'h',
         workedHours.toFixed(1) + 'h',
         diff > 0 ? '+' + diff.toFixed(1) + 'h' : '-',
@@ -2061,11 +2218,12 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
   const exportExcel = () => {
     const data = filteredLogs.map(log => {
       const { workedHours, stdHours, diff, emp } = getLogData(log);
+      const displayName = log.backupRealName ? `${log.employeeName} (${log.backupRealName})` : log.employeeName;
       return {
         Fecha: format(parseISO(log.checkIn), 'dd/MM/yyyy'),
         Entrada: format(parseISO(log.checkIn), 'HH:mm'),
         Salida: log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso',
-        Empleado: log.employeeName,
+        Empleado: displayName,
         Contrata: contractors.find(c => c.id === emp?.contractorId)?.name || 'Interno',
         Centro: centers.find(c => c.id === log.centerId)?.name || '-',
         Jornada: stdHours,
@@ -2227,7 +2385,12 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
                       {format(parseISO(log.checkIn), 'dd/MM/yy')}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900 text-sm">{log.employeeName}</div>
+                      <div className="font-bold text-slate-900 text-sm">
+                        {log.employeeName}
+                        {log.backupRealName && (
+                          <span className="text-slate-400 font-medium ml-1">({log.backupRealName})</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-xs font-bold text-slate-500">
                       {contractors.find(c => c.id === emp?.contractorId)?.name || 'Interno'}
@@ -2272,12 +2435,11 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
   });
 
   useEffect(() => {
-    const unsub = subscribeToCollection<AttendanceRecord>('attendance', setLogs);
+    const unsub = subscribeToAttendanceRange(filter.startDate, filter.endDate, setLogs);
     return () => unsub();
-  }, []);
+  }, [filter.startDate, filter.endDate]);
 
   const filteredLogs = logs.filter(log => {
-    const logDate = format(parseISO(log.checkIn), 'yyyy-MM-dd');
     const emp = employees.find(e => e.id === log.employeeId);
     
     let isActiveMatch = true;
@@ -2289,8 +2451,7 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
     return (
       (!filter.centerId || log.centerId === filter.centerId) &&
       (!filter.contractorId || emp?.contractorId === filter.contractorId) &&
-      isActiveMatch &&
-      logDate >= filter.startDate && logDate <= filter.endDate
+      isActiveMatch
     );
   });
 

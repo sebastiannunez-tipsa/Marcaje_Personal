@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, getDocs, onSnapshot, query, addDoc, updateDoc, deleteDoc, getDocFromServer } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, onSnapshot, query, addDoc, updateDoc, deleteDoc, getDocFromServer, where, limit } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from './firebase';
 import { Employee, WorkCenter, Contractor, CustomRole, AttendanceRecord } from './types';
@@ -205,12 +205,42 @@ export const subscribeToActiveSession = (
   callback: (session: AttendanceRecord | null) => void
 ) => {
   const q = query(
-    collection(db, 'attendance')
+    collection(db, 'attendance'),
+    where('employeeId', '==', employeeId),
+    where('status', '==', 'active'),
+    limit(1)
   );
   return onSnapshot(q, (snapshot) => {
+    if (snapshot.empty) {
+      callback(null);
+    } else {
+      const doc = snapshot.docs[0];
+      callback({ id: doc.id, ...doc.data() } as unknown as AttendanceRecord);
+    }
+  }, (error) => {
+    handleFirestoreError(error, OperationType.LIST, 'attendance');
+  });
+};
+
+export const subscribeToAttendanceRange = (
+  startDate: string,
+  endDate: string,
+  callback: (data: AttendanceRecord[]) => void
+) => {
+  // We use ISO strings for comparison. 
+  // Since we want the whole day, we set start to 00:00:00 and end to 23:59:59
+  const startISO = `${startDate}T00:00:00.000Z`;
+  const endISO = `${endDate}T23:59:59.999Z`;
+
+  const q = query(
+    collection(db, 'attendance'),
+    where('checkIn', '>=', startISO),
+    where('checkIn', '<=', endISO)
+  );
+
+  return onSnapshot(q, (snapshot) => {
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as AttendanceRecord));
-    const active = data.find(r => r.employeeId === employeeId && r.status === 'active');
-    callback(active || null);
+    callback(data);
   }, (error) => {
     handleFirestoreError(error, OperationType.LIST, 'attendance');
   });

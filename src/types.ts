@@ -1,5 +1,5 @@
 export interface AttendanceRecord {
-  id: number;
+  id: string;
   employeeId: string;
   employeeName: string;
   checkIn: string;
@@ -11,6 +11,7 @@ export interface AttendanceRecord {
   centerId: string;
   modifiedBy?: string;
   modifiedAt?: string;
+  backupRealName?: string;
 }
 
 export interface Employee {
