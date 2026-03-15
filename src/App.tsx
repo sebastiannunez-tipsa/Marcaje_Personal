@@ -286,9 +286,9 @@ export default function App() {
         )}
       </header>
 
-      <div className="flex-1 flex flex-col md:flex-row">
+      <div className="flex-1 flex flex-col md:flex-row min-h-0">
         {view === 'admin' && (
-          <aside className="w-full md:w-64 bg-slate-800 border-r border-slate-700 p-4 space-y-2">
+          <aside className="w-full md:w-64 bg-slate-800 border-b md:border-b-0 md:border-r border-slate-700 p-2 md:p-4 flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide">
             <AdminNavButton 
               active={adminSubView === 'dashboard'} 
               onClick={() => setAdminSubView('dashboard')}
@@ -753,14 +753,14 @@ function AdminNavButton({ active, onClick, icon, label }: { active: boolean, onC
     <button
       onClick={onClick}
       className={cn(
-        "w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all",
+        "flex-shrink-0 md:w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap",
         active 
           ? "bg-tipsa-blue text-white shadow-lg shadow-blue-900/20" 
           : "text-slate-300 hover:bg-slate-700 hover:text-white"
       )}
     >
       {icon}
-      {label}
+      <span className="md:inline">{label}</span>
     </button>
   );
 }
@@ -852,11 +852,11 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl mx-auto">
-      <div className="bg-white rounded-[3rem] shadow-2xl shadow-slate-200 p-12 border border-slate-100">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl mx-auto w-full">
+      <div className="bg-white rounded-2xl md:rounded-[3rem] shadow-2xl shadow-slate-200 p-6 md:p-12 border border-slate-100">
         <div className="text-center mb-10">
-          <h1 className="text-5xl font-black text-slate-900 mb-4 uppercase tracking-tight">{employee.name}</h1>
-          <div className="inline-flex flex-wrap justify-center gap-4 p-6 bg-slate-50 rounded-3xl border border-slate-100 shadow-inner">
+          <h1 className="text-3xl md:text-5xl font-black text-slate-900 mb-4 uppercase tracking-tight">{employee.name}</h1>
+          <div className="inline-flex flex-wrap justify-center gap-2 md:gap-4 p-4 md:p-6 bg-slate-50 rounded-2xl md:rounded-3xl border border-slate-100 shadow-inner">
             <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-sm border border-slate-100">
               <Briefcase className="w-4 h-4 text-tipsa-blue" />
               <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Contrata:</span>
@@ -926,15 +926,15 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
-            <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            <div className="p-4 md:p-6 rounded-2xl md:rounded-3xl bg-slate-50 border border-slate-100">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Estado Actual</div>
               <div className="flex items-center gap-2">
                 <div className={cn("w-3 h-3 rounded-full", activeSession ? "bg-emerald-500 animate-pulse" : "bg-slate-300")} />
                 <span className="font-black text-slate-900 text-lg">{activeSession ? "ACTIVO" : "INACTIVO"}</span>
               </div>
             </div>
-            <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100">
+            <div className="p-4 md:p-6 rounded-2xl md:rounded-3xl bg-slate-50 border border-slate-100">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Hora de Entrada</div>
               <div className="font-black text-slate-900 text-lg">
                 {activeSession ? format(parseISO(activeSession.checkIn), 'HH:mm:ss') : '--:--:--'}
@@ -946,7 +946,7 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
             onClick={activeSession ? handleCheckOut : handleCheckIn}
             disabled={loading || (!activeSession && !selectedCenter)}
             className={cn(
-              "w-full py-10 rounded-[2.5rem] font-black text-3xl shadow-xl transition-all flex items-center justify-center gap-4",
+              "w-full py-6 md:py-10 rounded-2xl md:rounded-[2.5rem] font-black text-xl md:text-3xl shadow-xl transition-all flex items-center justify-center gap-4",
               activeSession 
                 ? "bg-slate-900 text-white hover:bg-black shadow-slate-200" 
                 : "bg-tipsa-blue text-white hover:bg-blue-700 shadow-blue-200 disabled:opacity-50 disabled:shadow-none"
@@ -1053,7 +1053,7 @@ function AdminDashboard({ employees }: { employees: Employee[] }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard icon={<Users className="text-blue-600" />} label="Empleados" value={stats?.totalEmployees || 0} color="blue" />
         <StatCard icon={<Clock className="text-tipsa-blue" />} label="Total Horas" value={(stats?.totalHours || 0).toFixed(1) + 'h'} color="tipsa-blue" />
         <StatCard icon={<TrendingUp className="text-emerald-600" />} label="Horas Extras" value={'+' + (stats?.extraHours || 0).toFixed(1) + 'h'} color="emerald" />
@@ -1061,7 +1061,7 @@ function AdminDashboard({ employees }: { employees: Employee[] }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+        <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm">
           <h3 className="text-xl font-black text-slate-900 mb-8">Rendimiento Últimas Jornadas</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -1076,7 +1076,7 @@ function AdminDashboard({ employees }: { employees: Employee[] }) {
           </div>
         </div>
 
-        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+        <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm">
           <h3 className="text-xl font-black text-slate-900 mb-8">Actividad Reciente</h3>
           <div className="space-y-4 max-h-[300px] overflow-auto pr-2 custom-scrollbar">
             {logs.map(log => (
@@ -1261,7 +1261,7 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
         </motion.form>
       )}
 
-      <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-2xl md:rounded-[2rem] border border-slate-100 overflow-x-auto shadow-sm">
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
@@ -1497,7 +1497,7 @@ function ContractorManagement({ contractors, onUpdate, showSuccess, showError, c
         </motion.form>
       )}
 
-      <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-2xl md:rounded-[2rem] border border-slate-100 overflow-x-auto shadow-sm">
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
@@ -1606,7 +1606,7 @@ function RoleManagement({ roles, onUpdate, showSuccess, showError, confirm }: { 
         </motion.form>
       )}
 
-      <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-2xl md:rounded-[2rem] border border-slate-100 overflow-x-auto shadow-sm">
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
@@ -1795,8 +1795,8 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end mb-8">
+      <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 items-end mb-8">
           <div className="space-y-2 relative">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtrar por Empleado</label>
             <div className="relative">
@@ -1915,7 +1915,7 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
           </button>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-100">
+        <div className="overflow-x-auto rounded-2xl border border-slate-100">
           <table className="w-full text-left">
             <thead className="bg-slate-50">
               <tr>
@@ -2097,8 +2097,8 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end mb-8">
+      <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end mb-8">
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</label>
             <select 
@@ -2153,7 +2153,7 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-12">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-12">
           <StatCard
             icon={<Users className="text-tipsa-blue" />}
             label="Empleados Activos"
@@ -2193,7 +2193,7 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+          <div className="bg-slate-50 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-slate-100">
             <h4 className="text-sm font-black text-slate-900 mb-6 uppercase tracking-widest">Evolución de Horas</h4>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -2212,7 +2212,7 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
             </div>
           </div>
 
-          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+          <div className="bg-slate-50 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-slate-100">
             <h4 className="text-sm font-black text-slate-900 mb-6 uppercase tracking-widest">Participación de Empleados</h4>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
