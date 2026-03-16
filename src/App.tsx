@@ -30,7 +30,8 @@ import {
   Key,
   Lock,
   X,
-  Upload
+  Upload,
+  Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, differenceInHours, differenceInMinutes, parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
@@ -419,7 +420,7 @@ export default function App() {
                 {adminSubView === 'dashboard' && <AdminDashboard employees={employees} centers={centers} currentUser={currentUser} />}
                 {adminSubView === 'employees' && <EmployeeManagement employees={employees} centers={centers} contractors={contractors} roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'centers' && <CenterManagement centers={centers} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
-                {adminSubView === 'reports' && <ReportsView employees={employees} centers={centers} contractors={contractors} />}
+                {adminSubView === 'reports' && <ReportsView employees={employees} centers={centers} contractors={contractors} currentUser={currentUser} />}
                 {adminSubView === 'kpis' && <KPIsView employees={employees} centers={centers} contractors={contractors} />}
                 {adminSubView === 'contractors' && <ContractorManagement contractors={contractors} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'roles' && <RoleManagement roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
@@ -955,6 +956,13 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
           >
             <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tight">Identificación Backup</h3>
             <p className="text-slate-500 font-bold mb-6">Por favor, introduce tu nombre completo para este registro.</p>
+            
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <p className="font-bold text-xs">{error}</p>
+              </div>
+            )}
             
             <div className="space-y-4 mb-8">
               <div className="space-y-2">
@@ -2088,8 +2096,9 @@ function RoleManagement({ roles, onUpdate, showSuccess, showError, confirm }: { 
   );
 }
 
-function ReportsView({ employees, centers, contractors }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[] }) {
+function ReportsView({ employees, centers, contractors, currentUser }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[], currentUser: Employee | null }) {
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
+  const [selectedLog, setSelectedLog] = useState<AttendanceRecord | null>(null);
   const [filter, setFilter] = useState({ 
     employeeId: '', 
     centerId: '', 
@@ -2146,6 +2155,15 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
     return { workedHours, stdHours, diff, emp };
   };
 
+  const handleUpdateRecord = async (updated: Partial<AttendanceRecord>) => {
+    try {
+      await updateAttendanceRecord(updated);
+      setSelectedLog(null);
+    } catch (err) {
+      console.error("Error updating record:", err);
+    }
+  };
+
   const exportPDF = () => {
     const doc = new jsPDF();
     
@@ -2167,12 +2185,13 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
     doc.text(`INFORME DE ASISTENCIA: ${filter.startDate} al ${filter.endDate}`, 14, 40);
     
     const tableData = filteredLogs.map(log => {
-      const { workedHours, stdHours, diff } = getLogData(log);
+      const { workedHours, stdHours, diff, emp } = getLogData(log);
       const displayName = log.backupRealName ? `${log.employeeName} (${log.backupRealName})` : log.employeeName;
       return [
         format(parseISO(log.checkIn), 'dd/MM/yy HH:mm'),
         log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso',
         displayName,
+        emp?.shift || '-',
         stdHours + 'h',
         workedHours.toFixed(1) + 'h',
         diff > 0 ? '+' + diff.toFixed(1) + 'h' : '-',
@@ -2181,7 +2200,7 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
     });
 
     autoTable(doc, {
-      head: [['INICIO', 'FIN', 'EMPLEADO', 'JORNADA', 'TOTAL', 'EXTRAS', 'MENOS']],
+      head: [['INICIO', 'FIN', 'EMPLEADO', 'TURNO', 'JORNADA', 'TOTAL', 'EXTRAS', 'MENOS']],
       body: tableData,
       startY: 50,
       styles: { font: 'helvetica', fontSize: 8 },
@@ -2196,8 +2215,9 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
         1: { halign: 'center' },
         3: { halign: 'center' },
         4: { halign: 'center' },
-        5: { halign: 'center', textColor: [0, 150, 0] },
-        6: { halign: 'center', textColor: [200, 0, 0] }
+        5: { halign: 'center' },
+        6: { halign: 'center', textColor: [0, 150, 0] },
+        7: { halign: 'center', textColor: [200, 0, 0] }
       },
       alternateRowStyles: { fillColor: [245, 245, 245] },
       margin: { top: 50 }
@@ -2224,6 +2244,7 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
         Entrada: format(parseISO(log.checkIn), 'HH:mm'),
         Salida: log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso',
         Empleado: displayName,
+        Turno: emp?.shift || '-',
         Contrata: contractors.find(c => c.id === emp?.contractorId)?.name || 'Interno',
         Centro: centers.find(c => c.id === log.centerId)?.name || '-',
         Jornada: stdHours,
@@ -2241,6 +2262,16 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
 
   return (
     <div className="space-y-6">
+      {selectedLog && (
+        <AttendanceEditModal 
+          record={selectedLog}
+          employee={employees.find(e => e.id === selectedLog.employeeId)}
+          center={centers.find(c => c.id === selectedLog.centerId)}
+          onClose={() => setSelectedLog(null)}
+          onSave={handleUpdateRecord}
+          currentUser={currentUser}
+        />
+      )}
       <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 items-end mb-8">
           <div className="space-y-2 relative">
@@ -2367,6 +2398,7 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
               <tr>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Empleado</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Turno</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contrata</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Entrada/Salida</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Jornada</th>
@@ -2374,6 +2406,7 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-emerald-600">Extras</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-red-600">Menos</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Centro</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Acción</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -2391,6 +2424,9 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
                           <span className="text-slate-400 font-medium ml-1">({log.backupRealName})</span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 text-xs font-bold text-slate-500">
+                      {emp?.shift || '-'}
                     </td>
                     <td className="px-6 py-4 text-xs font-bold text-slate-500">
                       {contractors.find(c => c.id === emp?.contractorId)?.name || 'Interno'}
@@ -2412,6 +2448,15 @@ function ReportsView({ employees, centers, contractors }: { employees: Employee[
                     </td>
                     <td className="px-6 py-4 text-xs font-bold text-slate-400">
                       {centers.find(c => c.id === log.centerId)?.name || '-'}
+                    </td>
+                    <td className="px-6 py-4">
+                      <button 
+                        onClick={() => setSelectedLog(log)}
+                        className="p-2 hover:bg-tipsa-blue/10 rounded-xl transition-colors group"
+                        title="Editar registro"
+                      >
+                        <Edit2 className="w-4 h-4 text-tipsa-blue group-hover:scale-110 transition-transform" />
+                      </button>
                     </td>
                   </tr>
                 );
