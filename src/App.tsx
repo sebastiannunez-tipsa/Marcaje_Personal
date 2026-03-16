@@ -866,7 +866,7 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
   }, [employee.id, centers]);
 
   const handleCheckIn = async (realBackupName?: string) => {
-    const actualBackupName = typeof realBackupName === 'string' ? realBackupName : undefined;
+    const actualBackupName = typeof realBackupName === 'string' ? realBackupName : null;
     if (!selectedCenter) {
       setError("Por favor, selecciona un centro de trabajo.");
       return;
@@ -915,7 +915,7 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
         checkIn: new Date().toISOString(),
         checkOut: null,
         status: 'active',
-        backupRealName: actualBackupName
+        backupRealName: actualBackupName || null
       });
       
       setSuccess("¡Entrada registrada con éxito!");

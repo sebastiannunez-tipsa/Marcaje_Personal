@@ -78,11 +78,21 @@ export const subscribeToCollection = <T>(
   });
 };
 
+const cleanData = (data: any) => {
+  const clean: any = {};
+  Object.keys(data).forEach(key => {
+    if (data[key] !== undefined) {
+      clean[key] = data[key];
+    }
+  });
+  return clean;
+};
+
 export const saveEmployee = async (employee: Partial<Employee>) => {
   try {
     console.log("Saving employee:", employee);
     if (!employee.id) throw new Error("ID de empleado requerido");
-    await setDoc(doc(db, 'employees', employee.id), employee, { merge: true });
+    await setDoc(doc(db, 'employees', employee.id), cleanData(employee), { merge: true });
     console.log("Employee saved successfully");
   } catch (error) {
     console.error("Error saving employee:", error);
@@ -105,7 +115,7 @@ export const saveCenter = async (center: Partial<WorkCenter>) => {
   try {
     console.log("Saving center:", center);
     if (!center.id) throw new Error("ID de centro requerido");
-    await setDoc(doc(db, 'centers', center.id), center, { merge: true });
+    await setDoc(doc(db, 'centers', center.id), cleanData(center), { merge: true });
     console.log("Center saved successfully");
   } catch (error) {
     console.error("Error saving center:", error);
@@ -128,7 +138,7 @@ export const saveContractor = async (contractor: Partial<Contractor>) => {
   try {
     console.log("Saving contractor:", contractor);
     if (!contractor.id) throw new Error("ID de contrata requerido");
-    await setDoc(doc(db, 'contractors', contractor.id), contractor, { merge: true });
+    await setDoc(doc(db, 'contractors', contractor.id), cleanData(contractor), { merge: true });
     console.log("Contractor saved successfully");
   } catch (error) {
     console.error("Error saving contractor:", error);
@@ -151,7 +161,7 @@ export const saveRole = async (role: Partial<CustomRole>) => {
   try {
     console.log("Saving role:", role);
     if (!role.id) throw new Error("ID de rol requerido");
-    await setDoc(doc(db, 'roles', role.id), role, { merge: true });
+    await setDoc(doc(db, 'roles', role.id), cleanData(role), { merge: true });
     console.log("Role saved successfully");
   } catch (error) {
     console.error("Error saving role:", error);
@@ -173,7 +183,7 @@ export const deleteRole = async (id: string) => {
 export const checkIn = async (record: Omit<AttendanceRecord, 'id'>) => {
   try {
     const newId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    await setDoc(doc(db, 'attendance', newId), { ...record, id: newId });
+    await setDoc(doc(db, 'attendance', newId), cleanData({ ...record, id: newId }));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'attendance');
   }
@@ -181,10 +191,10 @@ export const checkIn = async (record: Omit<AttendanceRecord, 'id'>) => {
 
 export const checkOut = async (recordId: string, checkOutTime: string) => {
   try {
-    await updateDoc(doc(db, 'attendance', recordId), {
+    await updateDoc(doc(db, 'attendance', recordId), cleanData({
       checkOut: checkOutTime,
       status: 'completed'
-    });
+    }));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `attendance/${recordId}`);
   }
@@ -194,7 +204,7 @@ export const updateAttendanceRecord = async (record: Partial<AttendanceRecord>) 
   try {
     if (!record.id) throw new Error("ID de registro requerido");
     const { id, ...data } = record;
-    await updateDoc(doc(db, 'attendance', id.toString()), data);
+    await updateDoc(doc(db, 'attendance', id.toString()), cleanData(data));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `attendance/${record.id}`);
   }
