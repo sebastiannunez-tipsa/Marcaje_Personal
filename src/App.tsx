@@ -12,6 +12,7 @@ import {
   History,
   ChevronRight,
   ShieldCheck,
+  StickyNote,
   Smartphone,
   Monitor,
   Plus,
@@ -29,6 +30,7 @@ import {
   UserCog,
   Key,
   Lock,
+  Mail,
   X,
   Upload,
   Edit2
@@ -53,7 +55,7 @@ import {
 } from 'recharts';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { AttendanceRecord, Employee, WorkCenter, Contractor, CustomRole } from './types';
+import { AttendanceRecord, Employee, WorkCenter, Contractor, CustomRole, Note } from './types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -73,6 +75,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 };
 
 const validateDNI = (dni: string) => {
+  if (dni.toUpperCase() === 'ADMIN01') return true;
   const dniRegex = /^[0-9]{8}[TRWAGMYFPDXBNJZSQVHLCKE]$/i;
   const nieRegex = /^[XYZ][0-9]{7}[TRWAGMYFPDXBNJZSQVHLCKE]$/i;
   
@@ -124,9 +127,318 @@ const calculateSimilarity = (s1: string, s2: string) => {
   return (longer.length - editDistance(longer, shorter)) / longer.length;
 };
 
-import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, updateAttendanceRecord, subscribeToActiveSession, subscribeToAttendanceRange, deleteEmployee, deleteCenter, deleteContractor, deleteRole } from './db';
-import { auth } from './firebase';
+import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, updateAttendanceRecord, subscribeToActiveSession, subscribeToAttendanceRange, deleteEmployee, deleteCenter, deleteContractor, deleteRole, saveNote, deleteNote } from './db';
+import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+
+function NotesView({ contractors, employees, currentUser, showSuccess, showError }: { contractors: Contractor[], employees: Employee[], currentUser: any, showSuccess: (m: string) => void, showError: (m: string) => void }) {
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [formData, setFormData] = useState({
+    contractorId: '',
+    employeeId: '',
+    complementType: '',
+    content: '',
+    recipientEmail: ''
+  });
+
+  useEffect(() => {
+    const q = query(collection(db, 'notes'), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      setNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note)));
+    }, (error) => {
+      console.error("Error en el listener de notas:", error);
+      // No lanzamos error para evitar que la app se rompa, solo logueamos
+    });
+  }, []);
+
+  const normalizeString = (str: string) => {
+    return str
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  };
+
+  const filteredNotes = notes.filter(note => {
+    if (!searchQuery) return true;
+    const normalizedQuery = normalizeString(searchQuery);
+    const normalizedContent = normalizeString(note.content);
+    const normalizedType = normalizeString(note.complementType);
+    const normalizedCreatedBy = normalizeString(note.createdBy || '');
+    
+    const contractorName = note.contractorId === 'generico' ? 'Genérico' : contractors.find(c => c.id === note.contractorId)?.name || '';
+    const employeeName = note.employeeId === 'generico' ? 'Genérico' : employees.find(e => e.id === note.employeeId)?.name || '';
+    
+    return normalizedContent.includes(normalizedQuery) || 
+           normalizedType.includes(normalizedQuery) || 
+           normalizedCreatedBy.includes(normalizedQuery) ||
+           normalizeString(contractorName).includes(normalizedQuery) ||
+           normalizeString(employeeName).includes(normalizedQuery);
+  });
+
+  const handleSave = async (sendEmail: boolean = false) => {
+    if (!formData.contractorId || !formData.employeeId || !formData.complementType || !formData.content) {
+      showError('Por favor rellene todos los campos');
+      return;
+    }
+    if (formData.content.length > 250) {
+      showError('La nota no puede exceder los 250 caracteres');
+      return;
+    }
+
+    if (sendEmail) {
+      if (!formData.recipientEmail) {
+        showError('Por favor ingrese un email de destinatario');
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.recipientEmail)) {
+        showError('Por favor ingrese un email válido');
+        return;
+      }
+    }
+
+    try {
+      await saveNote({
+        contractorId: formData.contractorId,
+        employeeId: formData.employeeId,
+        complementType: formData.complementType,
+        content: formData.content,
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser?.email || 'Sistema'
+      });
+
+      if (sendEmail) {
+        const subject = `Comunicacion interna de horas y complementos Tipsa ${format(new Date(), 'dd/MM/yyyy')}`;
+        const contractorName = formData.contractorId === 'generico' ? 'Genérico' : contractors.find(c => c.id === formData.contractorId)?.name || 'N/A';
+        const employeeName = formData.employeeId === 'generico' ? 'Genérico' : employees.find(e => e.id === formData.employeeId)?.name || 'N/A';
+
+        const body = `RESUMEN DE NOTA / REGISTRO
+--------------------------
+FECHA: ${format(new Date(), 'dd/MM/yyyy HH:mm')}
+CONTRATA: ${contractorName}
+EMPLEADO: ${employeeName}
+TIPO DE COMPLEMENTO: ${formData.complementType}
+
+CONTENIDO:
+${formData.content}
+
+--------------------------
+Enviado desde el Sistema de Gestión Tipsa`;
+
+        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(formData.recipientEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        window.open(gmailUrl, '_blank');
+      }
+
+      setIsModalOpen(false);
+      setFormData({ contractorId: '', employeeId: '', complementType: '', content: '', recipientEmail: '' });
+      showSuccess(sendEmail ? 'Nota guardada y correo preparado' : 'Nota guardada correctamente');
+    } catch (error) {
+      console.error("Error saving note:", error);
+      showError('Error al guardar la nota. Verifique sus permisos.');
+    }
+  };
+
+  const filteredEmployees = employees.filter(e => e.contractorId === formData.contractorId);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Notas y Registros</h2>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" /> Nueva Nota
+        </button>
+      </div>
+
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+          <Search className="h-5 w-5 text-slate-400" />
+        </div>
+        <input
+          type="text"
+          placeholder="Buscar por palabra clave, empleado, contrata o tipo..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="block w-full pl-11 pr-4 py-4 bg-white border border-slate-100 rounded-3xl text-sm font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tipsa-blue focus:border-transparent shadow-sm transition-all"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        {filteredNotes.length > 0 ? (
+          filteredNotes.map(note => (
+            <div key={note.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
+                    <StickyNote className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-slate-900 uppercase tracking-widest">
+                      {note.complementType}
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      {format(parseISO(note.createdAt), 'dd/MM/yyyy HH:mm')} · Por {note.createdBy}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => deleteNote(note.id)}
+                  className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-slate-50 p-3 rounded-2xl">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Contrata</div>
+                  <div className="text-xs font-bold text-slate-700">
+                    {note.contractorId === 'generico' ? 'Genérico' : (contractors.find(c => c.id === note.contractorId)?.name || '-')}
+                  </div>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-2xl">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Empleado</div>
+                  <div className="text-xs font-bold text-slate-700">
+                    {note.employeeId === 'generico' ? 'Genérico' : (employees.find(e => e.id === note.employeeId)?.name || '-')}
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-sm text-slate-600 leading-relaxed bg-slate-50/50 p-4 rounded-2xl border border-slate-50">
+                {note.content}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-20 bg-white rounded-[2rem] border-2 border-dashed border-slate-100">
+            <Search className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+            <p className="text-slate-400 font-bold italic">
+              {notes.length === 0 ? 'No hay notas registradas aún.' : 'No se encontraron notas que coincidan con la búsqueda.'}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl"
+          >
+            <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Nueva Nota / Registro</h3>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Complete los detalles del registro</p>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white rounded-xl transition-colors">
+                <X className="w-6 h-6 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contrata</label>
+                  <select
+                    value={formData.contractorId}
+                    onChange={(e) => setFormData({ ...formData, contractorId: e.target.value, employeeId: '' })}
+                    className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-slate-900 transition-all"
+                  >
+                    <option value="">Seleccionar Contrata</option>
+                    <option value="generico">Genérico</option>
+                    {contractors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Empleado</label>
+                  <select
+                    value={formData.employeeId}
+                    onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+                    disabled={!formData.contractorId}
+                    className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-slate-900 transition-all disabled:opacity-50"
+                  >
+                    <option value="">Seleccionar Empleado</option>
+                    {formData.contractorId && <option value="generico">Genérico</option>}
+                    {filteredEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipo de Complemento</label>
+                  <input
+                    type="text"
+                    value={formData.complementType}
+                    onChange={(e) => setFormData({ ...formData, complementType: e.target.value })}
+                    placeholder="Ej: Horas Nocturnas, Festivos..."
+                    className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-slate-900 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Notas (máx. 250 caracteres)</label>
+                  <textarea
+                    value={formData.content}
+                    onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                    rows={6}
+                    className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-slate-900 transition-all resize-none"
+                    placeholder="Escriba aquí los detalles..."
+                  />
+                  <div className="flex justify-end">
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${formData.content.length > 250 ? 'text-red-600' : 'text-slate-400'}`}>
+                      {formData.content.length} / 250
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 md:col-span-2 pt-4 border-t border-slate-100">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Destinatario (opcional para Guardar y Enviar)</label>
+                  <input
+                    type="email"
+                    value={formData.recipientEmail}
+                    onChange={(e) => setFormData({ ...formData, recipientEmail: e.target.value })}
+                    placeholder="email@ejemplo.com"
+                    className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-slate-900 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-all border border-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSave(true)}
+                  className="flex-1 bg-emerald-600 text-white px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2"
+                >
+                  <Mail className="w-4 h-4" /> Guardar y Enviar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSave(false)}
+                  className="flex-1 bg-slate-900 text-white px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                >
+                  Guardar
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<Employee | null>(null);
@@ -136,7 +448,7 @@ export default function App() {
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [roles, setRoles] = useState<CustomRole[]>([]);
   const [view, setView] = useState<'login' | 'employee' | 'admin'>('login');
-  const [adminSubView, setAdminSubView] = useState<'dashboard' | 'employees' | 'centers' | 'reports' | 'contractors' | 'roles' | 'upload'>('dashboard');
+  const [adminSubView, setAdminSubView] = useState<'dashboard' | 'employees' | 'centers' | 'reports' | 'contractors' | 'roles' | 'upload' | 'notes'>('dashboard');
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -207,12 +519,44 @@ export default function App() {
     };
   }, [isAuthReady]);
 
-  const handleLogin = (employee: Employee, centerId: string, asAdmin: boolean = false) => {
+  useEffect(() => {
+    const admin = employees.find(e => e.name === 'Administrador' && e.dni === 'ADMIN01');
+    if (admin) {
+      saveEmployee({ ...admin, dni: 'X2224358M' });
+    }
+  }, [employees]);
+
+  const handleLogin = async (employee: Employee, centerId: string, asAdmin: boolean = false) => {
     setCurrentUser(employee);
     setLoginCenterId(centerId);
+    
+    // Link Firebase UID to Employee record to enable Firestore security rules
+    if (auth.currentUser && employee.firebaseUid !== auth.currentUser.uid) {
+      try {
+        await saveEmployee({ ...employee, firebaseUid: auth.currentUser.uid });
+      } catch (err) {
+        console.error("Error linking Firebase UID:", err);
+      }
+    }
+
     const assignedRole = roles.find(r => r.id === employee.roleId);
     const hasAdminPrivileges = employee.role === 'admin' || assignedRole?.isAdmin;
     
+    // Also save to a dedicated admins collection for more robust security rules
+    if (hasAdminPrivileges && auth.currentUser) {
+      try {
+        const { setDoc, doc } = await import('firebase/firestore');
+        await setDoc(doc(db, 'admins', auth.currentUser.uid), {
+          uid: auth.currentUser.uid,
+          email: auth.currentUser.email,
+          employeeId: employee.id,
+          linkedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (err) {
+        console.error("Error saving to admins collection:", err);
+      }
+    }
+
     if (hasAdminPrivileges && asAdmin) {
       setView('admin');
     } else {
@@ -391,6 +735,12 @@ export default function App() {
               icon={<Upload className="w-5 h-5" />}
               label="Subida de Datos"
             />
+            <AdminNavButton 
+              active={adminSubView === 'notes'} 
+              onClick={() => setAdminSubView('notes')}
+              icon={<StickyNote className="w-5 h-5" />}
+              label="Notas y Registros"
+            />
           </aside>
         )}
 
@@ -425,6 +775,7 @@ export default function App() {
                 {adminSubView === 'contractors' && <ContractorManagement contractors={contractors} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'roles' && <RoleManagement roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'upload' && <DataUploadView employees={employees} centers={centers} contractors={contractors} roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} />}
+                {adminSubView === 'notes' && <NotesView contractors={contractors} employees={employees} currentUser={currentUser} showSuccess={showSuccess} showError={showError} />}
               </div>
             )}
           </AnimatePresence>
@@ -460,8 +811,9 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
 
       // Create default admin
       const defaultAdmin: Partial<Employee> = {
+        id: 'admin',
         name: 'Administrador',
-        dni: 'ADMIN01',
+        dni: 'X2224358M',
         role: 'admin',
         centerIds: [centerId],
         password: 'admin'
@@ -2182,13 +2534,18 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
     doc.text('SISTEMA DE GESTIÓN DE MARCAJES', 14, 32);
     
     doc.setFontSize(10);
+    const centerName = filter.centerId ? centers.find(c => c.id === filter.centerId)?.name : 'TODOS LOS CENTROS';
+    const contractorName = filter.contractorId ? contractors.find(c => c.id === filter.contractorId)?.name : 'TODAS LAS CONTRATAS';
     doc.text(`INFORME DE ASISTENCIA: ${filter.startDate} al ${filter.endDate}`, 14, 40);
+    doc.text(`CENTRO: ${centerName} | CONTRATA: ${contractorName}`, 14, 44);
     
     const tableData = filteredLogs.map(log => {
       const { workedHours, stdHours, diff, emp } = getLogData(log);
       const displayName = log.backupRealName ? `${log.employeeName} (${log.backupRealName})` : log.employeeName;
       return [
-        format(parseISO(log.checkIn), 'dd/MM/yy HH:mm'),
+        format(parseISO(log.checkIn), 'dd/MM/yy'),
+        format(parseISO(log.checkIn), 'HH:mm'),
+        log.checkOut ? format(parseISO(log.checkOut), 'dd/MM/yy') : '-',
         log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso',
         displayName,
         emp?.shift || '-',
@@ -2200,10 +2557,10 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
     });
 
     autoTable(doc, {
-      head: [['INICIO', 'FIN', 'EMPLEADO', 'TURNO', 'JORNADA', 'TOTAL', 'EXTRAS', 'MENOS']],
+      head: [['F. ENTRADA', 'H. ENTRADA', 'F. SALIDA', 'H. SALIDA', 'EMPLEADO', 'TURNO', 'JORNADA', 'TOTAL', 'EXTRAS', 'MENOS']],
       body: tableData,
       startY: 50,
-      styles: { font: 'helvetica', fontSize: 8 },
+      styles: { font: 'helvetica', fontSize: 7 },
       headStyles: { 
         fillColor: [0, 74, 153], 
         textColor: [255, 255, 255],
@@ -2213,11 +2570,13 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
       columnStyles: {
         0: { halign: 'center' },
         1: { halign: 'center' },
+        2: { halign: 'center' },
         3: { halign: 'center' },
-        4: { halign: 'center' },
         5: { halign: 'center' },
-        6: { halign: 'center', textColor: [0, 150, 0] },
-        7: { halign: 'center', textColor: [200, 0, 0] }
+        6: { halign: 'center' },
+        7: { halign: 'center' },
+        8: { halign: 'center', textColor: [0, 150, 0] },
+        9: { halign: 'center', textColor: [200, 0, 0] }
       },
       alternateRowStyles: { fillColor: [245, 245, 245] },
       margin: { top: 50 }
@@ -2240,9 +2599,10 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
       const { workedHours, stdHours, diff, emp } = getLogData(log);
       const displayName = log.backupRealName ? `${log.employeeName} (${log.backupRealName})` : log.employeeName;
       return {
-        Fecha: format(parseISO(log.checkIn), 'dd/MM/yyyy'),
-        Entrada: format(parseISO(log.checkIn), 'HH:mm'),
-        Salida: log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso',
+        'Fecha Entrada': format(parseISO(log.checkIn), 'dd/MM/yyyy'),
+        'Hora Entrada': format(parseISO(log.checkIn), 'HH:mm'),
+        'Fecha Salida': log.checkOut ? format(parseISO(log.checkOut), 'dd/MM/yyyy') : '-',
+        'Hora Salida': log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso',
         Empleado: displayName,
         Turno: emp?.shift || '-',
         Contrata: contractors.find(c => c.id === emp?.contractorId)?.name || 'Interno',
@@ -2396,11 +2756,13 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
           <table className="w-full text-left">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">F. Entrada</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">H. Entrada</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">F. Salida</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">H. Salida</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Empleado</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Turno</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contrata</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Entrada/Salida</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Jornada</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Total</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-emerald-600">Extras</th>
@@ -2417,6 +2779,15 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
                     <td className="px-6 py-4 text-xs font-bold text-slate-500">
                       {format(parseISO(log.checkIn), 'dd/MM/yy')}
                     </td>
+                    <td className="px-6 py-4 text-xs font-mono text-slate-500">
+                      {format(parseISO(log.checkIn), 'HH:mm')}
+                    </td>
+                    <td className="px-6 py-4 text-xs font-bold text-slate-500">
+                      {log.checkOut ? format(parseISO(log.checkOut), 'dd/MM/yy') : '-'}
+                    </td>
+                    <td className="px-6 py-4 text-xs font-mono text-slate-500">
+                      {log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso'}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="font-bold text-slate-900 text-sm">
                         {log.employeeName}
@@ -2430,9 +2801,6 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
                     </td>
                     <td className="px-6 py-4 text-xs font-bold text-slate-500">
                       {contractors.find(c => c.id === emp?.contractorId)?.name || 'Interno'}
-                    </td>
-                    <td className="px-6 py-4 text-xs font-mono text-slate-500">
-                      {format(parseISO(log.checkIn), 'HH:mm')} - {log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso'}
                     </td>
                     <td className="px-6 py-4 font-black text-slate-500">
                       {stdHours}h
@@ -2471,6 +2839,8 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
 
 function KPIsView({ employees, centers, contractors }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[] }) {
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
+  const [showAbsenteeismList, setShowAbsenteeismList] = useState(false);
+  const [showExtrasList, setShowExtrasList] = useState(false);
   const [filter, setFilter] = useState({ 
     centerId: '', 
     contractorId: '',
@@ -2589,6 +2959,40 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
     return days;
   }, [filteredLogs, filter.startDate, filter.endDate, employees]);
 
+  const missingEmployees = React.useMemo(() => {
+    const clockedInIds = new Set(filteredLogs.map(l => l.employeeId));
+    return employees.filter(emp => {
+      const matchesCenter = !filter.centerId || emp.centerIds.includes(filter.centerId);
+      const matchesContractor = !filter.contractorId || emp.contractorId === filter.contractorId;
+      const isActive = !emp.terminationDate || new Date(emp.terminationDate) >= new Date(filter.startDate);
+      return matchesCenter && matchesContractor && isActive && !clockedInIds.has(emp.id);
+    });
+  }, [employees, filteredLogs, filter.centerId, filter.contractorId, filter.startDate]);
+
+  const extraHoursLogs = React.useMemo(() => {
+    return filteredLogs.filter(log => {
+      if (!log.checkOut) return false;
+      const emp = employees.find(e => e.id === log.employeeId);
+      const stdHours = emp?.standardHours || 8;
+      const worked = differenceInHours(parseISO(log.checkOut), parseISO(log.checkIn));
+      return worked > stdHours;
+    }).map(log => {
+      const emp = employees.find(e => e.id === log.employeeId);
+      const stdHours = emp?.standardHours || 8;
+      const worked = differenceInHours(parseISO(log.checkOut), parseISO(log.checkIn));
+      const extra = worked - stdHours;
+      const date = parseISO(log.checkIn);
+      return {
+        ...log,
+        employee: emp,
+        date: format(date, 'dd/MM/yyyy'),
+        dayOfWeek: format(date, 'EEEE', { locale: es }),
+        contractHours: stdHours,
+        extraHours: extra.toFixed(1)
+      };
+    });
+  }, [filteredLogs, employees]);
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm">
@@ -2665,12 +3069,14 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
             label="Horas Extras"
             value={totalExtraHours.toFixed(1)}
             color="blue"
+            onDoubleClick={() => setShowExtrasList(!showExtrasList)}
           />
           <StatCard
             icon={<UserCog className="text-red-600" />}
             label="Absentismo"
             value={`${absenteeism}%`}
             color="red"
+            onDoubleClick={() => setShowAbsenteeismList(!showAbsenteeismList)}
           />
           <StatCard
             icon={<LogOut className="text-orange-600" />}
@@ -2723,6 +3129,95 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
             </div>
           </div>
         </div>
+
+        {showAbsenteeismList && (
+          <div className="mt-8 bg-white p-6 rounded-3xl border border-red-100 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="flex justify-between items-center mb-6">
+              <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600" /> Personal sin marcajes en el periodo
+              </h4>
+              <span className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                {missingEmployees.length} Empleados
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {missingEmployees.map(emp => (
+                <div key={emp.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-slate-400 text-xs text-center">
+                    {emp.name.split(' ').map(n => n[0]).join('')}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-slate-900">{emp.name}</div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                      {contractors.find(c => c.id === emp.contractorId)?.name || 'Interno'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {missingEmployees.length === 0 && (
+                <div className="col-span-full py-12 text-center text-slate-400 font-bold italic">
+                  No se encontraron empleados sin marcajes.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {showExtrasList && (
+          <div className="mt-8 bg-white p-6 rounded-3xl border border-emerald-100 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300 overflow-hidden">
+            <div className="flex justify-between items-center mb-6">
+              <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-emerald-600" /> Detalle de Horas Extras
+              </h4>
+              <span className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                {extraHoursLogs.length} Registros
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Empleado</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Día</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contrata</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Turno</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Centro</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Contrato</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-center">Extras</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {extraHoursLogs.map(log => (
+                    <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-bold text-slate-900">{log.employeeName}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs font-bold text-slate-500">{log.date}</td>
+                      <td className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">{log.dayOfWeek}</td>
+                      <td className="px-4 py-3 text-xs font-bold text-slate-500">
+                        {contractors.find(c => c.id === log.employee?.contractorId)?.name || 'Interno'}
+                      </td>
+                      <td className="px-4 py-3 text-xs font-bold text-slate-500">{log.employee?.shift || '-'}</td>
+                      <td className="px-4 py-3 text-xs font-bold text-slate-500">
+                        {centers.find(c => c.id === log.centerId)?.name || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-xs font-black text-slate-400 text-center">{log.contractHours}h</td>
+                      <td className="px-4 py-3 text-xs font-black text-emerald-600 text-center">+{log.extraHours}h</td>
+                    </tr>
+                  ))}
+                  {extraHoursLogs.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-400 font-bold italic">
+                        No se encontraron registros con horas extras.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2939,7 +3434,7 @@ function Input({ label, value, onChange, type = "text", required = false }: { la
   );
 }
 
-function StatCard({ icon, label, value, color }: { icon: React.ReactNode, label: string, value: number | string, color: string }) {
+function StatCard({ icon, label, value, color, onDoubleClick }: { icon: React.ReactNode, label: string, value: number | string, color: string, onDoubleClick?: () => void }) {
   const colors: any = {
     blue: "bg-blue-50 border-blue-100",
     emerald: "bg-emerald-50 border-emerald-100",
@@ -2950,7 +3445,10 @@ function StatCard({ icon, label, value, color }: { icon: React.ReactNode, label:
   };
 
   return (
-    <div className={cn("p-4 rounded-[1.5rem] border shadow-sm flex flex-col justify-center min-h-[90px]", colors[color])}>
+    <div 
+      onDoubleClick={onDoubleClick}
+      className={cn("p-4 rounded-[1.5rem] border shadow-sm flex flex-col justify-center min-h-[90px] cursor-pointer active:scale-95 transition-transform", colors[color])}
+    >
       <div className="flex items-center gap-3">
         <div className="p-2.5 bg-white rounded-xl shadow-sm flex-shrink-0">
           {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5" })}

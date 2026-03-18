@@ -28,6 +28,7 @@ export interface Employee {
   terminationDate?: string;
   standardHours?: number;
   password?: string;
+  firebaseUid?: string;
 }
 
 export interface Contractor {
@@ -48,4 +49,14 @@ export interface WorkCenter {
   latitude: number;
   longitude: number;
   radius: number;
+}
+
+export interface Note {
+  id: string;
+  createdAt: string;
+  createdBy: string;
+  contractorId: string;
+  employeeId: string;
+  complementType: string;
+  content: string;
 }

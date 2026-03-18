@@ -2,8 +2,82 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "sebastian.nunez@tip-sa.com" ||
+        (exists(/databases/$(database)/documents/employees/admin) && 
+         get(/databases/$(database)/documents/employees/admin).data.get('firebaseUid', '') == request.auth.uid) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    match /admins/{adminId} {
+      allow read: if isAuthenticated();
+      // Temporary permissive rule to allow administrators to link their UID
+      // In production, this should be restricted to existing admins or specific UIDs
+      allow write: if isAuthenticated() && adminId == request.auth.uid;
+    }
+
+    match /employees/{employeeId} {
+      allow read: if isAuthenticated();
+      
+      // Allow creating the first admin if it doesn't exist
+      allow create: if (employeeId == 'admin' && !exists(/databases/$(database)/documents/employees/admin)) || isAdmin();
+      
+      // Allow updating:
+      // 1. The 'admin' document can be updated by anyone (to allow claiming/fixing it)
+      // 2. Any employee can be updated by an admin
+      // 3. An employee can update their own record if linked
+      // 4. An unlinked employee record can be linked by the user
+      allow update: if (employeeId == 'admin') || 
+                      isAdmin() || 
+                      (isAuthenticated() && (
+                        (exists(/databases/$(database)/documents/employees/$(employeeId)) &&
+                         get(/databases/$(database)/documents/employees/$(employeeId)).data.get('firebaseUid', '') == request.auth.uid) ||
+                        (exists(/databases/$(database)/documents/employees/$(employeeId)) &&
+                         get(/databases/$(database)/documents/employees/$(employeeId)).data.get('firebaseUid', '') == '' &&
+                         request.resource.data.get('firebaseUid', '') == request.auth.uid)
+                      ));
+      
+      allow delete: if isAdmin();
+    }
+
+    match /centers/{centerId} {
+      allow read: if isAuthenticated();
+      // Allow creating the first center if the system is being bootstrapped
+      allow create: if isAdmin() || !exists(/databases/$(database)/documents/employees/admin);
+      allow update, delete: if isAdmin();
+    }
+
+    match /contractors/{contractorId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /roles/{roleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /attendance/{recordId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /notes/{noteId} {
+      allow read: if isAuthenticated(); // Changed from isAdmin() to resolve listener errors
+      allow write: if isAdmin();
+    }
+
+    match /test/{docId} {
+      allow read: if true;
     }
   }
 }

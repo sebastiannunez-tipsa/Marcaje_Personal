@@ -73,6 +73,21 @@
         "isAdmin": { "type": "boolean" }
       },
       "required": ["id", "name", "isAdmin"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "A note or record for an employee",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "contractorId": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "complementType": { "type": "string" },
+        "content": { "type": "string" }
+      },
+      "required": ["id", "createdAt", "createdBy", "contractorId", "employeeId", "complementType", "content"]
     }
   },
   "firestore": {
@@ -95,6 +110,10 @@
     "roles": {
       "schema": "CustomRole",
       "description": "Collection of custom roles"
+    },
+    "notes": {
+      "schema": "Note",
+      "description": "Collection of notes and records"
     }
   }
 }

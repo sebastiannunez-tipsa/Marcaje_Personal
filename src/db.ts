@@ -1,7 +1,7 @@
 import { collection, doc, setDoc, getDocs, onSnapshot, query, addDoc, updateDoc, deleteDoc, getDocFromServer, where, limit } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from './firebase';
-import { Employee, WorkCenter, Contractor, CustomRole, AttendanceRecord } from './types';
+import { Employee, WorkCenter, Contractor, CustomRole, AttendanceRecord, Note } from './types';
 
 export enum OperationType {
   CREATE = 'create',
@@ -207,6 +207,23 @@ export const updateAttendanceRecord = async (record: Partial<AttendanceRecord>) 
     await updateDoc(doc(db, 'attendance', id.toString()), cleanData(data));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `attendance/${record.id}`);
+  }
+};
+
+export const saveNote = async (note: Partial<Note>) => {
+  try {
+    const id = note.id || `note_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    await setDoc(doc(db, 'notes', id), cleanData({ ...note, id }), { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'notes');
+  }
+};
+
+export const deleteNote = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'notes', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, 'notes');
   }
 };
 
