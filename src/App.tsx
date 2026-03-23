@@ -127,6 +127,43 @@ const calculateSimilarity = (s1: string, s2: string) => {
   return (longer.length - editDistance(longer, shorter)) / longer.length;
 };
 
+const safeParseISO = (dateStr: string | undefined) => {
+  if (!dateStr) return null;
+  try {
+    const date = parseISO(dateStr);
+    return isNaN(date.getTime()) ? null : date;
+  } catch {
+    return null;
+  }
+};
+
+const safeFormatDate = (dateStr: string | undefined, formatStr: string = 'dd/MM/yy') => {
+  const date = safeParseISO(dateStr);
+  if (!date) return '-';
+  return format(date, formatStr);
+};
+
+const parseExcelDate = (val: any) => {
+  if (!val) return '';
+  if (typeof val === 'number') {
+    // Excel serial date (days since Dec 30, 1899)
+    const date = new Date((val - 25569) * 86400 * 1000);
+    return format(date, 'yyyy-MM-dd');
+  }
+  if (typeof val === 'string') {
+    // Try to parse DD/MM/YYYY or DD-MM-YYYY
+    const parts = val.split(/[-/]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 4) return val; // Already YYYY-MM-DD
+      if (parts[2].length === 4) {
+        // DD/MM/YYYY -> YYYY-MM-DD
+        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+    }
+  }
+  return String(val);
+};
+
 import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, updateAttendanceRecord, subscribeToActiveSession, subscribeToAttendanceRange, deleteEmployee, deleteCenter, deleteContractor, deleteRole, saveNote, deleteNote } from './db';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
@@ -282,7 +319,7 @@ Enviado desde el Sistema de Gestión Tipsa`;
                       {note.complementType}
                     </div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      {format(parseISO(note.createdAt), 'dd/MM/yyyy HH:mm')} · Por {note.createdBy}
+                      {safeFormatDate(note.createdAt, 'dd/MM/yyyy HH:mm')} · Por {note.createdBy}
                     </div>
                   </div>
                 </div>
@@ -1237,7 +1274,8 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
     try {
       // Check 30 min margin
       if (lastSession && lastSession.checkOut) {
-        const diff = differenceInMinutes(new Date(), parseISO(lastSession.checkOut));
+        const cOut = safeParseISO(lastSession.checkOut);
+        const diff = cOut ? differenceInMinutes(new Date(), cOut) : 0;
         if (diff < 30) {
           throw new Error(`Debes esperar 30 minutos entre jornadas. Faltan ${30 - diff} minutos.`);
         }
@@ -1434,7 +1472,7 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
             <div className="p-4 md:p-6 rounded-2xl md:rounded-3xl bg-slate-50 border border-slate-100">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Hora de Entrada</div>
               <div className="font-black text-slate-900 text-lg">
-                {activeSession ? format(parseISO(activeSession.checkIn), 'HH:mm:ss') : '--:--:--'}
+                {activeSession ? safeFormatDate(activeSession.checkIn, 'HH:mm:ss') : '--:--:--'}
               </div>
             </div>
           </div>
@@ -1488,7 +1526,9 @@ function AttendanceEditModal({
   const [checkOut, setCheckOut] = useState(record.checkOut ? record.checkOut.substring(0, 16) : '');
   const [error, setError] = useState<string | null>(null);
 
-  const hours = checkOut ? differenceInHours(parseISO(checkOut), parseISO(checkIn)) : 0;
+  const cIn = safeParseISO(checkIn);
+  const cOut = safeParseISO(checkOut);
+  const hours = (cIn && cOut) ? differenceInHours(cOut, cIn) : 0;
   const stdHours = employee?.standardHours || 8;
   const extraHours = hours > stdHours ? hours - stdHours : 0;
   const lessHours = hours < stdHours ? stdHours - hours : 0;
@@ -1602,7 +1642,7 @@ function AttendanceEditModal({
           <div className="mb-8 p-4 rounded-2xl bg-amber-50 border border-amber-100 flex items-center gap-3">
             <History className="w-5 h-5 text-amber-500" />
             <div className="text-xs font-bold text-amber-700">
-              Última modificación por <span className="font-black">{record.modifiedBy}</span> el {format(parseISO(record.modifiedAt!), 'd MMM, HH:mm', { locale: es })}
+              Última modificación por <span className="font-black">{record.modifiedBy}</span> el {safeFormatDate(record.modifiedAt!, 'd MMM, HH:mm')}
             </div>
           </div>
         )}
@@ -1650,7 +1690,9 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
 
     filteredLogs.forEach(log => {
       if (log.checkOut) {
-        const hours = differenceInHours(parseISO(log.checkOut), parseISO(log.checkIn));
+        const cIn = safeParseISO(log.checkIn);
+        const cOut = safeParseISO(log.checkOut);
+        const hours = (cIn && cOut) ? differenceInHours(cOut, cIn) : 0;
         totalHours += hours;
         
         const emp = employees.find(e => e.id === log.employeeId);
@@ -1672,10 +1714,14 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
     };
   }, [filteredLogs, employees]);
 
-  const chartData = filteredLogs.slice(0, 10).reverse().map(log => ({
-    name: log.employeeName,
-    hours: log.checkOut ? differenceInHours(parseISO(log.checkOut), parseISO(log.checkIn)) : 0
-  }));
+  const chartData = filteredLogs.slice(0, 10).reverse().map(log => {
+    const cIn = safeParseISO(log.checkIn);
+    const cOut = safeParseISO(log.checkOut);
+    return {
+      name: log.employeeName,
+      hours: (cIn && cOut) ? differenceInHours(cOut, cIn) : 0
+    };
+  });
 
   const logsByCenter = React.useMemo(() => {
     const grouped: { [key: string]: AttendanceRecord[] } = {};
@@ -1844,7 +1890,7 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
                               </div>
                             )}
                             <div className="text-[10px] font-bold text-slate-400 uppercase">
-                              {format(parseISO(log.checkIn), 'HH:mm')} - {log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : '...'}
+                              {safeFormatDate(log.checkIn, 'HH:mm')} - {log.checkOut ? safeFormatDate(log.checkOut, 'HH:mm') : '...'}
                             </div>
                           </div>
                         </div>
@@ -1864,6 +1910,31 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
 
 function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, showSuccess, showError, confirm }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[], roles: CustomRole[], onUpdate: () => void, showSuccess: (m: string) => void, showError: (m: string) => void, confirm: (m: string, c: () => void) => void }) {
   const [editing, setEditing] = useState<Partial<Employee> | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [centerFilter, setCenterFilter] = useState('');
+  const [contractorFilter, setContractorFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  const filteredEmployees = employees.filter(emp => {
+    const matchesSearch = emp.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         emp.dni.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCenter = !centerFilter || emp.centerIds.includes(centerFilter);
+    const matchesContractor = !contractorFilter || emp.contractorId === contractorFilter;
+    
+    let matchesStatus = true;
+    if (statusFilter !== 'all') {
+      const isCurrentlyActive = !emp.terminationDate || new Date(emp.terminationDate) >= new Date();
+      matchesStatus = statusFilter === 'active' ? isCurrentlyActive : !isCurrentlyActive;
+    }
+
+    return matchesSearch && matchesCenter && matchesContractor && matchesStatus;
+  });
+
+  // Sort by name
+  const sortedEmployees = [...filteredEmployees].sort((a, b) => a.name.localeCompare(b.name));
+
+  const [displayLimit, setDisplayLimit] = useState(50);
+  const displayedEmployees = sortedEmployees.slice(0, displayLimit);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1957,6 +2028,44 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
         >
           <Plus className="w-5 h-5" /> Nuevo Empleado
         </button>
+      </div>
+
+      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input 
+            type="text" 
+            placeholder="Buscar por nombre o DNI..." 
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm focus:ring-2 focus:ring-tipsa-blue outline-none"
+          />
+        </div>
+        <select 
+          value={centerFilter} 
+          onChange={e => setCenterFilter(e.target.value)}
+          className="p-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm focus:ring-2 focus:ring-tipsa-blue outline-none"
+        >
+          <option value="">Todos los Centros</option>
+          {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select 
+          value={contractorFilter} 
+          onChange={e => setContractorFilter(e.target.value)}
+          className="p-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm focus:ring-2 focus:ring-tipsa-blue outline-none"
+        >
+          <option value="">Todas las Contratas</option>
+          {contractors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select 
+          value={statusFilter} 
+          onChange={e => setStatusFilter(e.target.value as any)}
+          className="p-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm focus:ring-2 focus:ring-tipsa-blue outline-none"
+        >
+          <option value="all">Todos los Estados</option>
+          <option value="active">Solo Activos</option>
+          <option value="inactive">Solo Bajas</option>
+        </select>
       </div>
 
       {editing && (
@@ -2078,7 +2187,7 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {employees.map(emp => (
+            {displayedEmployees.map(emp => (
               <tr key={emp.id} className="hover:bg-slate-50/50 transition-colors">
                 <td className="px-6 py-4">
                   <div className="font-bold text-slate-900">{emp.name}</div>
@@ -2096,8 +2205,8 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
                   <div className="text-[10px] font-bold text-slate-400">{emp.shift || '-'}</div>
                 </td>
                 <td className="px-6 py-4">
-                  <div className="text-[10px] font-bold text-slate-700">Alta: {emp.hireDate ? format(parseISO(emp.hireDate), 'dd/MM/yy') : '-'}</div>
-                  <div className="text-[10px] font-bold text-red-600">Baja: {emp.terminationDate ? format(parseISO(emp.terminationDate), 'dd/MM/yy') : '-'}</div>
+                  <div className="text-[10px] font-bold text-slate-700">Alta: {safeFormatDate(emp.hireDate)}</div>
+                  <div className="text-[10px] font-bold text-red-600">Baja: {safeFormatDate(emp.terminationDate)}</div>
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex flex-wrap gap-1">
@@ -2121,6 +2230,17 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
           </tbody>
         </table>
       </div>
+
+      {sortedEmployees.length > displayLimit && (
+        <div className="flex justify-center pt-4">
+          <button 
+            onClick={() => setDisplayLimit(prev => prev + 50)}
+            className="px-8 py-3 bg-white border-2 border-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
+          >
+            Mostrar más empleados ({sortedEmployees.length - displayLimit} restantes)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2481,7 +2601,7 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
   });
 
   const filteredLogs = logs.filter(log => {
-    const logDate = format(parseISO(log.checkIn), 'yyyy-MM-dd');
+    const logDate = safeFormatDate(log.checkIn, 'yyyy-MM-dd');
     const emp = employees.find(e => e.id === log.employeeId);
     
     let isActiveMatch = true;
@@ -2502,7 +2622,9 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
   const getLogData = (log: AttendanceRecord) => {
     const emp = employees.find(e => e.id === log.employeeId);
     const stdHours = emp?.standardHours || 8;
-    const workedHours = log.checkOut ? differenceInHours(parseISO(log.checkOut), parseISO(log.checkIn)) : 0;
+    const cIn = safeParseISO(log.checkIn);
+    const cOut = safeParseISO(log.checkOut);
+    const workedHours = (cIn && cOut) ? differenceInHours(cOut, cIn) : 0;
     const diff = workedHours - stdHours;
     return { workedHours, stdHours, diff, emp };
   };
@@ -2543,10 +2665,10 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
       const { workedHours, stdHours, diff, emp } = getLogData(log);
       const displayName = log.backupRealName ? `${log.employeeName} (${log.backupRealName})` : log.employeeName;
       return [
-        format(parseISO(log.checkIn), 'dd/MM/yy'),
-        format(parseISO(log.checkIn), 'HH:mm'),
-        log.checkOut ? format(parseISO(log.checkOut), 'dd/MM/yy') : '-',
-        log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso',
+        safeFormatDate(log.checkIn, 'dd/MM/yy'),
+        safeFormatDate(log.checkIn, 'HH:mm'),
+        log.checkOut ? safeFormatDate(log.checkOut, 'dd/MM/yy') : '-',
+        log.checkOut ? safeFormatDate(log.checkOut, 'HH:mm') : 'En curso',
         displayName,
         emp?.shift || '-',
         stdHours + 'h',
@@ -2599,10 +2721,10 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
       const { workedHours, stdHours, diff, emp } = getLogData(log);
       const displayName = log.backupRealName ? `${log.employeeName} (${log.backupRealName})` : log.employeeName;
       return {
-        'Fecha Entrada': format(parseISO(log.checkIn), 'dd/MM/yyyy'),
-        'Hora Entrada': format(parseISO(log.checkIn), 'HH:mm'),
-        'Fecha Salida': log.checkOut ? format(parseISO(log.checkOut), 'dd/MM/yyyy') : '-',
-        'Hora Salida': log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso',
+        'Fecha Entrada': safeFormatDate(log.checkIn, 'dd/MM/yyyy'),
+        'Hora Entrada': safeFormatDate(log.checkIn, 'HH:mm'),
+        'Fecha Salida': log.checkOut ? safeFormatDate(log.checkOut, 'dd/MM/yyyy') : '-',
+        'Hora Salida': log.checkOut ? safeFormatDate(log.checkOut, 'HH:mm') : 'En curso',
         Empleado: displayName,
         Turno: emp?.shift || '-',
         Contrata: contractors.find(c => c.id === emp?.contractorId)?.name || 'Interno',
@@ -2777,16 +2899,16 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
                 return (
                   <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4 text-xs font-bold text-slate-500">
-                      {format(parseISO(log.checkIn), 'dd/MM/yy')}
+                      {safeFormatDate(log.checkIn, 'dd/MM/yy')}
                     </td>
                     <td className="px-6 py-4 text-xs font-mono text-slate-500">
-                      {format(parseISO(log.checkIn), 'HH:mm')}
+                      {safeFormatDate(log.checkIn, 'HH:mm')}
                     </td>
                     <td className="px-6 py-4 text-xs font-bold text-slate-500">
-                      {log.checkOut ? format(parseISO(log.checkOut), 'dd/MM/yy') : '-'}
+                      {log.checkOut ? safeFormatDate(log.checkOut, 'dd/MM/yy') : '-'}
                     </td>
                     <td className="px-6 py-4 text-xs font-mono text-slate-500">
-                      {log.checkOut ? format(parseISO(log.checkOut), 'HH:mm') : 'En curso'}
+                      {log.checkOut ? safeFormatDate(log.checkOut, 'HH:mm') : 'En curso'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="font-bold text-slate-900 text-sm">
@@ -2874,7 +2996,11 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
   const totalEmployees = new Set(filteredLogs.map(l => l.employeeId)).size;
   const totalHours = filteredLogs.reduce((acc, log) => {
     if (log.checkOut) {
-      return acc + differenceInHours(parseISO(log.checkOut), parseISO(log.checkIn));
+      const checkIn = safeParseISO(log.checkIn);
+      const checkOut = safeParseISO(log.checkOut);
+      if (checkIn && checkOut) {
+        return acc + differenceInHours(checkOut, checkIn);
+      }
     }
     return acc;
   }, 0);
@@ -2882,9 +3008,13 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
     const emp = employees.find(e => e.id === log.employeeId);
     const stdHours = emp?.standardHours || 8;
     if (log.checkOut) {
-      const worked = differenceInHours(parseISO(log.checkOut), parseISO(log.checkIn));
-      if (worked > stdHours) {
-        return acc + (worked - stdHours);
+      const checkIn = safeParseISO(log.checkIn);
+      const checkOut = safeParseISO(log.checkOut);
+      if (checkIn && checkOut) {
+        const worked = differenceInHours(checkOut, checkIn);
+        if (worked > stdHours) {
+          return acc + (worked - stdHours);
+        }
       }
     }
     return acc;
@@ -2893,7 +3023,9 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
   // Calculate Absenteeism
   // This is a simplified calculation: (Expected Hours - Actual Hours) / Expected Hours * 100
   // In a real scenario, this would involve checking schedules and leaves.
-  const expectedHours = totalEmployees * 8 * (differenceInHours(parseISO(filter.endDate), parseISO(filter.startDate)) / 24 + 1);
+  const sDate = safeParseISO(filter.startDate);
+  const eDate = safeParseISO(filter.endDate);
+  const expectedHours = (sDate && eDate) ? totalEmployees * 8 * (differenceInHours(eDate, sDate) / 24 + 1) : 0;
   const absenteeism = expectedHours > 0 ? Math.max(0, ((expectedHours - totalHours) / expectedHours) * 100).toFixed(1) : "0.0";
 
   // Calculate Turnover KPIs for the selected period
@@ -2905,19 +3037,19 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
 
   const departuresInPeriod = periodEmployees.filter(emp => {
     if (!emp.terminationDate) return false;
-    const termDate = format(parseISO(emp.terminationDate), 'yyyy-MM-dd');
+    const termDate = safeFormatDate(emp.terminationDate, 'yyyy-MM-dd');
     return termDate >= filter.startDate && termDate <= filter.endDate;
   }).length;
 
   const hiresInPeriod = periodEmployees.filter(emp => {
     if (!emp.hireDate) return false;
-    const hireDate = format(parseISO(emp.hireDate), 'yyyy-MM-dd');
+    const hireDate = safeFormatDate(emp.hireDate, 'yyyy-MM-dd');
     return hireDate >= filter.startDate && hireDate <= filter.endDate;
   }).length;
 
   const activeAtEnd = periodEmployees.filter(emp => {
     if (!emp.terminationDate) return true;
-    return format(parseISO(emp.terminationDate), 'yyyy-MM-dd') > filter.endDate;
+    return safeFormatDate(emp.terminationDate, 'yyyy-MM-dd') > filter.endDate;
   }).length;
 
   const activeAtStart = activeAtEnd + departuresInPeriod - hiresInPeriod;
@@ -2927,19 +3059,27 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
   // Evolution Data
   const evolutionData = React.useMemo(() => {
     const days = [];
-    let current = parseISO(filter.startDate);
-    const end = parseISO(filter.endDate);
+    let current = safeParseISO(filter.startDate);
+    const end = safeParseISO(filter.endDate);
     
+    if (!current || !end) return [];
+
     while (current <= end) {
       const dateStr = format(current, 'yyyy-MM-dd');
-      const dayLogs = filteredLogs.filter(l => format(parseISO(l.checkIn), 'yyyy-MM-dd') === dateStr);
+      const dayLogs = filteredLogs.filter(l => safeFormatDate(l.checkIn, 'yyyy-MM-dd') === dateStr);
       
-      const dayHours = dayLogs.reduce((acc, l) => acc + (l.checkOut ? differenceInHours(parseISO(l.checkOut), parseISO(l.checkIn)) : 0), 0);
+      const dayHours = dayLogs.reduce((acc, l) => {
+        const cIn = safeParseISO(l.checkIn);
+        const cOut = safeParseISO(l.checkOut);
+        return acc + (cIn && cOut ? differenceInHours(cOut, cIn) : 0);
+      }, 0);
       const dayExtra = dayLogs.reduce((acc, l) => {
         const emp = employees.find(e => e.id === l.employeeId);
         const std = emp?.standardHours || 8;
-        if (l.checkOut) {
-          const worked = differenceInHours(parseISO(l.checkOut), parseISO(l.checkIn));
+        const cIn = safeParseISO(l.checkIn);
+        const cOut = safeParseISO(l.checkOut);
+        if (cIn && cOut) {
+          const worked = differenceInHours(cOut, cIn);
           return acc + (worked > std ? worked - std : 0);
         }
         return acc;
@@ -2974,19 +3114,23 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
       if (!log.checkOut) return false;
       const emp = employees.find(e => e.id === log.employeeId);
       const stdHours = emp?.standardHours || 8;
-      const worked = differenceInHours(parseISO(log.checkOut), parseISO(log.checkIn));
+      const cIn = safeParseISO(log.checkIn);
+      const cOut = safeParseISO(log.checkOut);
+      if (!cIn || !cOut) return false;
+      const worked = differenceInHours(cOut, cIn);
       return worked > stdHours;
     }).map(log => {
       const emp = employees.find(e => e.id === log.employeeId);
       const stdHours = emp?.standardHours || 8;
-      const worked = differenceInHours(parseISO(log.checkOut), parseISO(log.checkIn));
+      const cIn = safeParseISO(log.checkIn);
+      const cOut = safeParseISO(log.checkOut);
+      const worked = (cIn && cOut) ? differenceInHours(cOut, cIn) : 0;
       const extra = worked - stdHours;
-      const date = parseISO(log.checkIn);
       return {
         ...log,
         employee: emp,
-        date: format(date, 'dd/MM/yyyy'),
-        dayOfWeek: format(date, 'EEEE', { locale: es }),
+        date: safeFormatDate(log.checkIn, 'dd/MM/yyyy'),
+        dayOfWeek: cIn ? format(cIn, 'EEEE', { locale: es }) : '-',
         contractHours: stdHours,
         extraHours: extra.toFixed(1)
       };
@@ -3311,8 +3455,8 @@ function DataUploadView({ employees, centers, contractors, roles, onUpdate, show
               area: row.Area || '',
               shift: row.Turno || '',
               standardHours: parseFloat(row.Horas_Jornada) || 8,
-              hireDate: row.Fecha_Alta || format(new Date(), 'yyyy-MM-dd'),
-              terminationDate: row.Fecha_Baja || '',
+              hireDate: parseExcelDate(row.Fecha_Alta) || format(new Date(), 'yyyy-MM-dd'),
+              terminationDate: parseExcelDate(row.Fecha_Baja) || '',
               contractorId: contractor?.id || null,
               roleId: role?.id || null,
               role: (row.Tipo_Acceso === 'admin' ? 'admin' : 'employee'),
