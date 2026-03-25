@@ -787,6 +787,7 @@ export default function App() {
               <LoginView 
                 employees={employees} 
                 centers={centers} 
+                contractors={contractors}
                 roles={roles} 
                 isAdminLogin={isAdminLogin} 
                 isAuthReady={isAuthReady}
@@ -822,8 +823,9 @@ export default function App() {
   );
 }
 
-function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authError, onGoogleLogin, onLogin, showSuccess, showError }: { employees: Employee[], centers: WorkCenter[], roles: CustomRole[], isAdminLogin: boolean, isAuthReady: boolean, authError: string | null, onGoogleLogin: () => void, onLogin: (e: Employee, centerId: string, asAdmin: boolean) => void, showSuccess: (m: string) => void, showError: (m: string) => void }) {
+function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAuthReady, authError, onGoogleLogin, onLogin, showSuccess, showError }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[], roles: CustomRole[], isAdminLogin: boolean, isAuthReady: boolean, authError: string | null, onGoogleLogin: () => void, onLogin: (e: Employee, centerId: string, asAdmin: boolean) => void, showSuccess: (m: string) => void, showError: (m: string) => void }) {
   const [selectedCenterId, setSelectedCenterId] = useState<string>('');
+  const [selectedContractorId, setSelectedContractorId] = useState<string>('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -921,7 +923,10 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
       // Employee access: show only normal employees (even if they have admin roles)
       // but exclude pure administrators (role === 'admin')
       if (emp.role === 'admin') return false;
-      return !selectedCenterId || emp.centerIds.includes(selectedCenterId);
+      const matchesCenter = !selectedCenterId || emp.centerIds.includes(selectedCenterId);
+      const matchesContractor = !selectedContractorId || 
+        (selectedContractorId === 'interno' ? !emp.contractorId : emp.contractorId === selectedContractorId);
+      return matchesCenter && matchesContractor;
     }
   });
 
@@ -1019,37 +1024,57 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
           )}
           
           {!isAdminLogin && (
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">1. Selecciona Centro</label>
-                <button 
-                  onClick={detectNearestCenter}
-                  disabled={isDetecting}
-                  className="text-[10px] font-bold text-tipsa-blue hover:text-blue-700 flex items-center gap-1 disabled:opacity-50"
+            <>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">1. Selecciona Centro</label>
+                  <button 
+                    onClick={detectNearestCenter}
+                    disabled={isDetecting}
+                    className="text-[10px] font-bold text-tipsa-blue hover:text-blue-700 flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <MapPin className={cn("w-3 h-3", isDetecting && "animate-bounce")} /> 
+                    {isDetecting ? 'Detectando...' : 'Detectar cercano'}
+                  </button>
+                </div>
+                <select
+                  value={selectedCenterId}
+                  onChange={(e) => {
+                    setSelectedCenterId(e.target.value);
+                    setSelectedEmployeeId('');
+                  }}
+                  className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue"
                 >
-                  <MapPin className={cn("w-3 h-3", isDetecting && "animate-bounce")} /> 
-                  {isDetecting ? 'Detectando...' : 'Detectar cercano'}
-                </button>
+                  <option value="">Seleccionar Centro...</option>
+                  {centers.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
               </div>
-              <select
-                value={selectedCenterId}
-                onChange={(e) => {
-                  setSelectedCenterId(e.target.value);
-                  setSelectedEmployeeId('');
-                }}
-                className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue"
-              >
-                <option value="">Seleccionar Centro...</option>
-                {centers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">2. Selecciona Contrata</label>
+                <select
+                  value={selectedContractorId}
+                  onChange={(e) => {
+                    setSelectedContractorId(e.target.value);
+                    setSelectedEmployeeId('');
+                  }}
+                  className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue"
+                >
+                  <option value="">Seleccionar Contrata...</option>
+                  <option value="interno">Personal Interno</option>
+                  {contractors.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            </>
           )}
 
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              {isAdminLogin ? 'Selecciona Administrador' : '2. Selecciona Empleado'}
+              {isAdminLogin ? 'Selecciona Administrador' : '3. Selecciona Empleado'}
             </label>
             <select
               value={selectedEmployeeId}
@@ -1057,7 +1082,7 @@ function LoginView({ employees, centers, roles, isAdminLogin, isAuthReady, authE
                 setSelectedEmployeeId(e.target.value);
                 setLoginMode(null);
               }}
-              disabled={!isAdminLogin && !selectedCenterId}
+              disabled={!isAdminLogin && (!selectedCenterId || !selectedContractorId)}
               className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue disabled:opacity-50"
             >
               <option value="">{isAdminLogin ? 'Seleccionar Administrador...' : 'Seleccionar Empleado...'}</option>
