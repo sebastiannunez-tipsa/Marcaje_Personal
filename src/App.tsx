@@ -60,6 +60,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
+import { useTheme } from './ThemeContext';
+
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -478,6 +480,7 @@ Enviado desde el Sistema de Gestión Tipsa`;
 }
 
 export default function App() {
+  const { theme, setTheme } = useTheme();
   const [currentUser, setCurrentUser] = useState<Employee | null>(null);
   const [loginCenterId, setLoginCenterId] = useState<string>('');
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -485,7 +488,7 @@ export default function App() {
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [roles, setRoles] = useState<CustomRole[]>([]);
   const [view, setView] = useState<'login' | 'employee' | 'admin'>('login');
-  const [adminSubView, setAdminSubView] = useState<'dashboard' | 'employees' | 'centers' | 'reports' | 'contractors' | 'roles' | 'upload' | 'notes'>('dashboard');
+  const [adminSubView, setAdminSubView] = useState<'dashboard' | 'employees' | 'centers' | 'reports' | 'contractors' | 'roles' | 'upload' | 'notes' | 'settings' | 'kpis'>('dashboard');
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -624,7 +627,7 @@ export default function App() {
   const fetchData = () => {};
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col font-sans transition-colors duration-300">
       <AnimatePresence>
         {notification && (
           <motion.div 
@@ -681,7 +684,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <header className="bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center sticky top-0 z-50 shadow-sm">
+      <header className="bg-slate-800 dark:bg-slate-950 border-b border-slate-700 dark:border-slate-800 px-6 py-4 flex justify-between items-center sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-2">
           <div className="bg-tipsa-blue p-2 rounded-xl">
             <Clock className="text-white w-6 h-6" />
@@ -697,6 +700,13 @@ export default function App() {
                 {view === 'admin' ? 'Panel de Control' : 'Acceso Empleado'}
               </span>
             </div>
+            <button 
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="p-2.5 hover:bg-slate-700 rounded-xl text-slate-300 transition-all border border-transparent hover:border-slate-600"
+              title="Cambiar tema"
+            >
+              {theme === 'dark' ? <Monitor className="w-5 h-5" /> : <Smartphone className="w-5 h-5" />}
+            </button>
             <button 
               onClick={handleLogout}
               className="p-2.5 hover:bg-slate-700 rounded-xl text-slate-300 transition-all border border-transparent hover:border-slate-600"
@@ -723,7 +733,7 @@ export default function App() {
 
       <div className="flex-1 flex flex-col md:flex-row min-h-0">
         {view === 'admin' && (
-          <aside className="w-full md:w-64 bg-slate-800 border-b md:border-b-0 md:border-r border-slate-700 p-2 md:p-4 flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide">
+          <aside className="w-full md:w-64 bg-slate-800 dark:bg-slate-950 border-b md:border-b-0 md:border-r border-slate-700 dark:border-slate-800 p-2 md:p-4 flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-x-visible scrollbar-hide">
             <AdminNavButton 
               active={adminSubView === 'dashboard'} 
               onClick={() => setAdminSubView('dashboard')}
@@ -778,6 +788,12 @@ export default function App() {
               icon={<StickyNote className="w-5 h-5" />}
               label="Notas y Registros"
             />
+            <AdminNavButton 
+              active={adminSubView === 'settings'} 
+              onClick={() => setAdminSubView('settings')}
+              icon={<Settings className="w-5 h-5" />}
+              label="Configuración"
+            />
           </aside>
         )}
 
@@ -814,6 +830,7 @@ export default function App() {
                 {adminSubView === 'roles' && <RoleManagement roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'upload' && <DataUploadView employees={employees} centers={centers} contractors={contractors} roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} />}
                 {adminSubView === 'notes' && <NotesView contractors={contractors} employees={employees} currentUser={currentUser} showSuccess={showSuccess} showError={showError} />}
+                {adminSubView === 'settings' && <SettingsView />}
               </div>
             )}
           </AnimatePresence>
@@ -1132,7 +1149,7 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Introduce tu contraseña"
-                className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue"
+                className="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue dark:text-white"
               />
             </div>
           )}
@@ -1223,6 +1240,97 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
   );
 }
 
+function SettingsView() {
+  const { theme, setTheme } = useTheme();
+  const [selectedTheme, setSelectedTheme] = useState(theme);
+
+  useEffect(() => {
+    setSelectedTheme(theme);
+  }, [theme]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Configuración</h2>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm">
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-widest mb-4">Apariencia</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Elige cómo se ve la aplicación en tu dispositivo.</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <button
+                onClick={() => setSelectedTheme('light')}
+                className={cn(
+                  "flex flex-col items-center gap-4 p-6 rounded-3xl border-2 transition-all",
+                  selectedTheme === 'light' 
+                    ? "border-tipsa-blue bg-blue-50 dark:bg-blue-900/20" 
+                    : "border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600"
+                )}
+              >
+                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+                  <Monitor className="w-6 h-6 text-slate-400" />
+                </div>
+                <div className="text-center">
+                  <div className="font-black text-slate-900 dark:text-white uppercase text-xs tracking-widest">Claro</div>
+                  <div className="text-[10px] font-bold text-slate-400 mt-1">Tema tradicional</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setSelectedTheme('dark')}
+                className={cn(
+                  "flex flex-col items-center gap-4 p-6 rounded-3xl border-2 transition-all",
+                  selectedTheme === 'dark' 
+                    ? "border-tipsa-blue bg-blue-50 dark:bg-blue-900/20" 
+                    : "border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600"
+                )}
+              >
+                <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm">
+                  <Smartphone className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-center">
+                  <div className="font-black text-slate-900 dark:text-white uppercase text-xs tracking-widest">Oscuro</div>
+                  <div className="text-[10px] font-bold text-slate-400 mt-1">Ideal para la noche</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setSelectedTheme('system')}
+                className={cn(
+                  "flex flex-col items-center gap-4 p-6 rounded-3xl border-2 transition-all",
+                  selectedTheme === 'system' 
+                    ? "border-tipsa-blue bg-blue-50 dark:bg-blue-900/20" 
+                    : "border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600"
+                )}
+              >
+                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center shadow-sm">
+                  <RefreshCw className="w-6 h-6 text-slate-400" />
+                </div>
+                <div className="text-center">
+                  <div className="font-black text-slate-900 dark:text-white uppercase text-xs tracking-widest">Sistema</div>
+                  <div className="text-[10px] font-bold text-slate-400 mt-1">Sincroniza con tu dispositivo</div>
+                </div>
+              </button>
+            </div>
+            
+            <div className="mt-8 flex justify-end">
+              <button
+                onClick={() => setTheme(selectedTheme)}
+                className="bg-tipsa-blue text-white px-8 py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-700 transition-all"
+              >
+                Aplicar Cambios
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminNavButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
   return (
     <button
@@ -1231,7 +1339,7 @@ function AdminNavButton({ active, onClick, icon, label }: { active: boolean, onC
         "flex-shrink-0 md:w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap",
         active 
           ? "bg-tipsa-blue text-white shadow-lg shadow-blue-900/20" 
-          : "text-slate-300 hover:bg-slate-700 hover:text-white"
+          : "text-slate-300 dark:text-slate-400 hover:bg-slate-700 dark:hover:bg-slate-800 hover:text-white dark:hover:text-white"
       )}
     >
       {icon}
@@ -1692,6 +1800,7 @@ function AttendanceEditModal({
 }
 
 function AdminDashboard({ employees, centers, currentUser }: { employees: Employee[], centers: WorkCenter[], currentUser: Employee | null }) {
+  const { theme } = useTheme();
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
   const [selectedLog, setSelectedLog] = useState<AttendanceRecord | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1798,7 +1907,7 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
             type="date" 
             value={dateRange.from} 
             onChange={e => setDateRange({...dateRange, from: e.target.value})}
-            className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none"
+            className="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-sm outline-none dark:text-white"
           />
         </div>
         <div className="flex-1 space-y-2">
@@ -1807,7 +1916,7 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
             type="date" 
             value={dateRange.to} 
             onChange={e => setDateRange({...dateRange, to: e.target.value})}
-            className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none"
+            className="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-sm outline-none dark:text-white"
           />
         </div>
       </div>
@@ -1820,15 +1929,15 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm">
-          <h3 className="text-xl font-black text-slate-900 mb-8">Rendimiento Últimas Jornadas</h3>
+        <div className="bg-white dark:bg-slate-800 p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm">
+          <h3 className="text-xl font-black text-slate-900 dark:text-white mb-8">Rendimiento Últimas Jornadas</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }} />
-                <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#f1f5f9'} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 700 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 700 }} />
+                <Tooltip cursor={{ fill: theme === 'dark' ? '#1e293b' : '#f8fafc' }} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', color: theme === 'dark' ? '#ffffff' : '#000000' }} />
                 <Bar dataKey="hours" radius={[6, 6, 0, 0]} fill="#004A99" />
               </BarChart>
             </ResponsiveContainer>
@@ -1837,7 +1946,7 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
 
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
-            <h3 className="text-xl font-black text-slate-900">Actividad por Centro</h3>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">Actividad por Centro</h3>
             <div className="flex items-center gap-2 flex-1 max-w-md">
               <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -1846,13 +1955,13 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
                   placeholder="Buscar mozo..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-white font-bold text-xs outline-none focus:ring-2 focus:ring-tipsa-blue transition-all"
+                  className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-xs outline-none focus:ring-2 focus:ring-tipsa-blue transition-all dark:text-white"
                 />
               </div>
               <select 
                 value={recordsLimit}
                 onChange={e => setRecordsLimit(Number(e.target.value))}
-                className="p-2 rounded-xl border border-slate-200 bg-white font-black text-[10px] outline-none focus:ring-2 focus:ring-tipsa-blue transition-all uppercase tracking-widest"
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-black text-[10px] outline-none focus:ring-2 focus:ring-tipsa-blue transition-all uppercase tracking-widest dark:text-white"
               >
                 <option value={10}>10 Reg.</option>
                 <option value={25}>25 Reg.</option>
@@ -1866,15 +1975,15 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
               if (centerLogs.length === 0) return null;
 
               return (
-                <div key={center.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                <div key={center.id} className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-tipsa-blue/10 flex items-center justify-center">
                         <Building2 className="w-5 h-5 text-tipsa-blue" />
                       </div>
-                      <h4 className="font-black text-slate-900">{center.name}</h4>
+                      <h4 className="font-black text-slate-900 dark:text-white">{center.name}</h4>
                     </div>
-                    <span className="px-3 py-1 rounded-full bg-slate-100 text-[10px] font-black text-slate-500 uppercase">
+                    <span className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">
                       {centerLogs.length} Registros
                     </span>
                   </div>
@@ -1886,17 +1995,17 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
                         className={cn(
                           "w-full p-4 rounded-2xl border flex justify-between items-center transition-all group",
                           log.status === 'active' 
-                            ? "bg-slate-200/70 border-slate-300 hover:bg-slate-200" 
-                            : "bg-slate-50 border-slate-100 hover:bg-slate-100"
+                            ? "bg-slate-200/70 dark:bg-slate-700/70 border-slate-300 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700" 
+                            : "bg-slate-50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
                         )}
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-bold text-slate-400 group-hover:border-tipsa-blue group-hover:text-tipsa-blue transition-colors">
+                          <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-400 group-hover:border-tipsa-blue group-hover:text-tipsa-blue transition-colors">
                             {log.employeeName[0]}
                           </div>
                           <div className="text-left">
                             <div className="flex items-center gap-2">
-                              <div className="font-bold text-slate-900 text-sm">
+                              <div className="font-bold text-slate-900 dark:text-white text-sm">
                                 {log.employeeName}
                               </div>
                               {log.backupRealName && (
@@ -3597,7 +3706,7 @@ function Input({ label, value, onChange, type = "text", required = false }: { la
         value={value || ''}
         onChange={e => onChange(e.target.value)}
         required={required}
-        className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm focus:ring-2 focus:ring-tipsa-blue outline-none transition-all"
+        className="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-sm focus:ring-2 focus:ring-tipsa-blue outline-none transition-all dark:text-white"
       />
     </div>
   );
@@ -3605,12 +3714,12 @@ function Input({ label, value, onChange, type = "text", required = false }: { la
 
 function StatCard({ icon, label, value, color, onDoubleClick }: { icon: React.ReactNode, label: string, value: number | string, color: string, onDoubleClick?: () => void }) {
   const colors: any = {
-    blue: "bg-blue-50 border-blue-100",
-    emerald: "bg-emerald-50 border-emerald-100",
-    "tipsa-blue": "bg-blue-50 border-blue-100",
-    red: "bg-red-50 border-red-100",
-    orange: "bg-orange-50 border-orange-100",
-    purple: "bg-purple-50 border-purple-100"
+    blue: "bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30",
+    emerald: "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/30",
+    "tipsa-blue": "bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30",
+    red: "bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30",
+    orange: "bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-900/30",
+    purple: "bg-purple-50 dark:bg-purple-900/20 border-purple-100 dark:border-purple-900/30"
   };
 
   return (
@@ -3619,12 +3728,12 @@ function StatCard({ icon, label, value, color, onDoubleClick }: { icon: React.Re
       className={cn("p-4 rounded-[1.5rem] border shadow-sm flex flex-col justify-center min-h-[90px] cursor-pointer active:scale-95 transition-transform", colors[color])}
     >
       <div className="flex items-center gap-3">
-        <div className="p-2.5 bg-white rounded-xl shadow-sm flex-shrink-0">
-          {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5" })}
+        <div className="p-2.5 bg-white dark:bg-slate-800 rounded-xl shadow-sm flex-shrink-0">
+          {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5 dark:text-white" })}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5 truncate">{label}</div>
-          <div className="text-lg font-black text-slate-900 leading-none whitespace-nowrap overflow-hidden text-ellipsis">{value}</div>
+          <div className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-0.5 truncate">{label}</div>
+          <div className="text-lg font-black text-slate-900 dark:text-white leading-none whitespace-nowrap overflow-hidden text-ellipsis">{value}</div>
         </div>
       </div>
     </div>
