@@ -941,8 +941,7 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
       // but exclude pure administrators (role === 'admin')
       if (emp.role === 'admin') return false;
       const matchesCenter = !selectedCenterId || emp.centerIds.includes(selectedCenterId);
-      const matchesContractor = !selectedContractorId || 
-        (selectedContractorId === 'interno' ? !emp.contractorId : emp.contractorId === selectedContractorId);
+      const matchesContractor = !selectedContractorId || emp.contractorId === selectedContractorId;
       return matchesCenter && matchesContractor;
     }
   });
@@ -1080,7 +1079,6 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
                   className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue"
                 >
                   <option value="">Seleccionar Contrata...</option>
-                  <option value="interno">Personal Interno</option>
                   {contractors.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
@@ -1352,6 +1350,8 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
   const [activeSession, setActiveSession] = useState<AttendanceRecord | null>(null);
   const [lastSession, setLastSession] = useState<AttendanceRecord | null>(null);
   const [showBackupModal, setShowBackupModal] = useState(false);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [warningMessage, setWarningMessage] = useState("");
   const [backupName, setBackupName] = useState('');
   const [selectedCenter, setSelectedCenter] = useState<WorkCenter | null>(
     centers.find(c => c.id === initialCenterId) || null
@@ -1388,7 +1388,7 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
     };
   }, [employee.id, centers]);
 
-  const handleCheckIn = async (realBackupName?: string) => {
+  const handleCheckIn = async (realBackupName?: string, bypassRestriction: boolean = false) => {
     const actualBackupName = typeof realBackupName === 'string' ? realBackupName : null;
     if (!selectedCenter) {
       setError("Por favor, selecciona un centro de trabajo.");
@@ -1405,12 +1405,23 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
     setError(null);
     setSuccess(null);
     try {
-      // Check 30 min margin
-      if (lastSession && lastSession.checkOut) {
+      // Check margin
+      if (!bypassRestriction && lastSession && lastSession.checkOut) {
         const cOut = safeParseISO(lastSession.checkOut);
         const diff = cOut ? differenceInMinutes(new Date(), cOut) : 0;
-        if (diff < 30) {
-          throw new Error(`Debes esperar 30 minutos entre jornadas. Faltan ${30 - diff} minutos.`);
+        
+        if (lastSession.centerId === selectedCenter.id) {
+          // Same center
+          if (diff < 15) {
+            setWarningMessage("Has fichado en este centro hace menos de 15 minutos. ¿Estás seguro de que quieres volver a fichar?");
+            setShowWarningModal(true);
+            return;
+          }
+        } else {
+          // Different center
+          if (diff < 30) {
+            throw new Error(`Debes esperar 30 minutos entre jornadas en centros diferentes. Faltan ${30 - diff} minutos.`);
+          }
         }
       }
 
@@ -1513,6 +1524,40 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
                 disabled={backupName.trim().length < 3}
                 onClick={() => handleCheckIn(backupName.trim())}
                 className="flex-1 py-4 px-6 rounded-2xl font-black text-sm bg-tipsa-blue text-white shadow-lg shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest disabled:opacity-50 disabled:hover:scale-100"
+              >
+                Confirmar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {showWarningModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-md">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100"
+          >
+            <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tight">Advertencia</h3>
+            <p className="text-slate-500 font-bold mb-6">{warningMessage}</p>
+            
+            <div className="flex gap-4">
+              <button 
+                onClick={() => {
+                  setShowWarningModal(false);
+                  onLogout(); // Redirect to home/login
+                }}
+                className="flex-1 py-4 px-6 rounded-2xl font-black text-sm text-slate-500 hover:bg-slate-50 transition-all uppercase tracking-widest"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  setShowWarningModal(false);
+                  handleCheckIn(undefined, true); // Pass a flag to bypass restriction
+                }}
+                className="flex-1 py-4 px-6 rounded-2xl font-black text-sm bg-tipsa-blue text-white shadow-lg shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest"
               >
                 Confirmar
               </button>
