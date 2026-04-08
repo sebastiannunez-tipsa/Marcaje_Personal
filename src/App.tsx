@@ -405,7 +405,7 @@ Enviado desde el Sistema de Gestión Tipsa`;
                   >
                     <option value="">Seleccionar Empleado</option>
                     {formData.contractorId && <option value="generico">Genérico</option>}
-                    {filteredEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    {filteredEmployees.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                   </select>
                 </div>
 
@@ -942,9 +942,10 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
       if (emp.role === 'admin') return false;
       const matchesCenter = !selectedCenterId || emp.centerIds.includes(selectedCenterId);
       const matchesContractor = !selectedContractorId || emp.contractorId === selectedContractorId;
+      
       return matchesCenter && matchesContractor;
     }
-  });
+  }).sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 
   const selectedEmployee = employees.find(e => e.id === selectedEmployeeId);
   const assignedRole = roles.find(r => r.id === selectedEmployee?.roleId);
@@ -1003,9 +1004,13 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
       }
       setIsDetecting(false);
     }, (err) => {
-      setError("Error al obtener ubicación: " + err.message);
+      console.warn("Geolocalización denegada o fallida:", err.message);
+      setError("No se pudo detectar tu ubicación automáticamente. Por favor, selecciona el centro manualmente.");
       setIsDetecting(false);
-    }, { enableHighAccuracy: true, timeout: 10000 });
+    }, {
+      timeout: 5000,
+      maximumAge: 0
+    });
   }, [centers]);
 
   useEffect(() => {
@@ -1088,10 +1093,12 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
           )}
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            <label htmlFor="employee-select" className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
               {isAdminLogin ? 'Selecciona Administrador' : '3. Selecciona Empleado'}
             </label>
             <select
+              id="employee-select"
+              name="employee-select"
               value={selectedEmployeeId}
               onChange={(e) => {
                 setSelectedEmployeeId(e.target.value);
@@ -1101,7 +1108,7 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
               className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-tipsa-blue disabled:opacity-50"
             >
               <option value="">{isAdminLogin ? 'Seleccionar Administrador...' : 'Seleccionar Empleado...'}</option>
-              {filteredEmployees.map(e => (
+              {filteredEmployees.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map(e => (
                 <option key={e.id} value={e.id}>{e.name}</option>
               ))}
             </select>
@@ -2102,7 +2109,7 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
     
     let matchesStatus = true;
     if (statusFilter !== 'all') {
-      const isCurrentlyActive = !emp.terminationDate || new Date(emp.terminationDate) >= new Date();
+      const isCurrentlyActive = !emp.terminationDate || new Date(emp.terminationDate).getTime() >= new Date().setHours(0,0,0,0);
       matchesStatus = statusFilter === 'active' ? isCurrentlyActive : !isCurrentlyActive;
     }
 
@@ -2243,7 +2250,7 @@ function EmployeeManagement({ employees, centers, contractors, roles, onUpdate, 
         >
           <option value="all">Todos los Estados</option>
           <option value="active">Solo Activos</option>
-          <option value="inactive">Solo Bajas</option>
+          <option value="inactive">Solo Inactivos</option>
         </select>
       </div>
 
@@ -2772,7 +2779,7 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
     
     let isActiveMatch = true;
     if (filter.isActive !== 'all') {
-      const isCurrentlyActive = !e.terminationDate || new Date(e.terminationDate) >= new Date();
+      const isCurrentlyActive = !e.terminationDate || new Date(e.terminationDate).getTime() >= new Date().setHours(0,0,0,0);
       isActiveMatch = filter.isActive === 'active' ? isCurrentlyActive : !isCurrentlyActive;
     }
 
@@ -2785,7 +2792,7 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
     
     let isActiveMatch = true;
     if (filter.isActive !== 'all' && emp) {
-      const isCurrentlyActive = !emp.terminationDate || new Date(emp.terminationDate) >= new Date();
+      const isCurrentlyActive = !emp.terminationDate || new Date(emp.terminationDate).getTime() >= new Date().setHours(0,0,0,0);
       isActiveMatch = filter.isActive === 'active' ? isCurrentlyActive : !isCurrentlyActive;
     }
 
@@ -3160,7 +3167,7 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
     
     let isActiveMatch = true;
     if (filter.isActive !== 'all' && emp) {
-      const isCurrentlyActive = !emp.terminationDate || new Date(emp.terminationDate) >= new Date();
+      const isCurrentlyActive = !emp.terminationDate || new Date(emp.terminationDate).getTime() >= new Date().setHours(0,0,0,0);
       isActiveMatch = filter.isActive === 'active' ? isCurrentlyActive : !isCurrentlyActive;
     }
 
