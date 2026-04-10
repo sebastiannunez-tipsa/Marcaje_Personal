@@ -60,3 +60,14 @@ export interface Note {
   complementType: string;
   content: string;
 }
+
+export interface SecurityLog {
+  id: string;
+  timestamp: string;
+  userId: string;
+  userName: string;
+  action: 'create' | 'update' | 'delete';
+  collection: string;
+  recordId: string;
+  details: string;
+}

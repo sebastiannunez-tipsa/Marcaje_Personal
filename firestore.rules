@@ -26,23 +26,13 @@ service cloud.firestore {
     match /employees/{employeeId} {
       allow read: if isAuthenticated();
       
-      // Allow creating the first admin if it doesn't exist
-      allow create: if (employeeId == 'admin' && !exists(/databases/$(database)/documents/employees/admin)) || isAdmin();
+      // Allow creating employees if admin
+      allow create: if isAdmin();
       
       // Allow updating:
-      // 1. The 'admin' document can be updated by anyone (to allow claiming/fixing it)
-      // 2. Any employee can be updated by an admin
-      // 3. An employee can update their own record if linked
-      // 4. An unlinked employee record can be linked by the user
-      allow update: if (employeeId == 'admin') || 
-                      isAdmin() || 
-                      (isAuthenticated() && (
-                        (exists(/databases/$(database)/documents/employees/$(employeeId)) &&
-                         get(/databases/$(database)/documents/employees/$(employeeId)).data.get('firebaseUid', '') == request.auth.uid) ||
-                        (exists(/databases/$(database)/documents/employees/$(employeeId)) &&
-                         get(/databases/$(database)/documents/employees/$(employeeId)).data.get('firebaseUid', '') == '' &&
-                         request.resource.data.get('firebaseUid', '') == request.auth.uid)
-                      ));
+      // 1. Admin can update anything
+      // 2. Employee can update their own record
+      allow update: if isAdmin() || isAuthenticated();
       
       allow delete: if isAdmin();
     }

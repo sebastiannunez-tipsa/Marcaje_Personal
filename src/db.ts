@@ -1,7 +1,7 @@
 import { collection, doc, setDoc, getDocs, onSnapshot, query, addDoc, updateDoc, deleteDoc, getDocFromServer, where, limit } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from './firebase';
-import { Employee, WorkCenter, Contractor, CustomRole, AttendanceRecord, Note } from './types';
+import { Employee, WorkCenter, Contractor, CustomRole, AttendanceRecord, Note, SecurityLog } from './types';
 
 export enum OperationType {
   CREATE = 'create',
@@ -200,6 +200,23 @@ export const checkOut = async (recordId: string, checkOutTime: string) => {
   }
 };
 
+export const deleteAttendanceRecord = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'attendance', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `attendance/${id}`);
+  }
+};
+
+export const saveSecurityLog = async (log: Omit<SecurityLog, 'id'>) => {
+  try {
+    const newId = `log_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    await setDoc(doc(db, 'security_logs', newId), cleanData({ ...log, id: newId }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'security_logs');
+  }
+};
+
 export const updateAttendanceRecord = async (record: Partial<AttendanceRecord>) => {
   try {
     if (!record.id) throw new Error("ID de registro requerido");
@@ -227,6 +244,26 @@ export const deleteNote = async (id: string) => {
   }
 };
 
+export const hasBackupToday = async (employeeId: string) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startISO = today.toISOString();
+    
+    const q = query(
+      collection(db, 'attendance'),
+      where('employeeId', '==', employeeId),
+      where('checkIn', '>=', startISO)
+    );
+    
+    const snapshot = await getDocs(q);
+    return !snapshot.empty;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'attendance');
+    return false;
+  }
+};
+
 export const subscribeToActiveSession = (
   employeeId: string,
   callback: (session: AttendanceRecord | null) => void
@@ -234,14 +271,16 @@ export const subscribeToActiveSession = (
   const q = query(
     collection(db, 'attendance'),
     where('employeeId', '==', employeeId),
-    where('status', '==', 'active'),
+    where('checkOut', '==', null),
     limit(1)
   );
   return onSnapshot(q, (snapshot) => {
+    console.log("DEBUG: subscribeToActiveSession snapshot empty:", snapshot.empty, "employeeId:", employeeId);
     if (snapshot.empty) {
       callback(null);
     } else {
       const doc = snapshot.docs[0];
+      console.log("DEBUG: Active session found:", doc.id, doc.data());
       callback({ id: doc.id, ...doc.data() } as unknown as AttendanceRecord);
     }
   }, (error) => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { SecurityLog } from './types';
 import { 
   Clock, 
   MapPin, 
@@ -166,10 +167,51 @@ const parseExcelDate = (val: any) => {
   return String(val);
 };
 
-import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, updateAttendanceRecord, subscribeToActiveSession, subscribeToAttendanceRange, deleteEmployee, deleteCenter, deleteContractor, deleteRole, saveNote, deleteNote } from './db';
+import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, updateAttendanceRecord, subscribeToActiveSession, subscribeToAttendanceRange, deleteEmployee, deleteCenter, deleteContractor, deleteRole, saveNote, deleteNote, hasBackupToday, deleteAttendanceRecord, saveSecurityLog } from './db';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+
+export default function App() {
+  const { theme, setTheme } = useTheme();
+function LogsView() {
+  const [logs, setLogs] = useState<SecurityLog[]>([]);
+
+  useEffect(() => {
+    const q = query(collection(db, 'security_logs'), orderBy('timestamp', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SecurityLog)));
+    });
+  }, []);
+
+  return (
+    <div className="p-6">
+      <h2 className="text-2xl font-black mb-6">Logs de Seguridad</h2>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="p-4 font-black text-xs uppercase text-slate-500">Fecha/Hora</th>
+              <th className="p-4 font-black text-xs uppercase text-slate-500">Usuario</th>
+              <th className="p-4 font-black text-xs uppercase text-slate-500">Acción</th>
+              <th className="p-4 font-black text-xs uppercase text-slate-500">Detalles</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.map(log => (
+              <tr key={log.id} className="border-t border-slate-100">
+                <td className="p-4 text-sm">{safeFormatDate(log.timestamp, 'dd/MM/yy HH:mm')}</td>
+                <td className="p-4 text-sm font-bold">{log.userName}</td>
+                <td className="p-4 text-sm uppercase font-black">{log.action}</td>
+                <td className="p-4 text-sm">{log.details}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 function NotesView({ contractors, employees, currentUser, showSuccess, showError }: { contractors: Contractor[], employees: Employee[], currentUser: any, showSuccess: (m: string) => void, showError: (m: string) => void }) {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -479,8 +521,7 @@ Enviado desde el Sistema de Gestión Tipsa`;
   );
 }
 
-export default function App() {
-  const { theme, setTheme } = useTheme();
+
   const [currentUser, setCurrentUser] = useState<Employee | null>(null);
   const [loginCenterId, setLoginCenterId] = useState<string>('');
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -488,7 +529,7 @@ export default function App() {
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [roles, setRoles] = useState<CustomRole[]>([]);
   const [view, setView] = useState<'login' | 'employee' | 'admin'>('login');
-  const [adminSubView, setAdminSubView] = useState<'dashboard' | 'employees' | 'centers' | 'reports' | 'contractors' | 'roles' | 'upload' | 'notes' | 'settings' | 'kpis'>('dashboard');
+  const [adminSubView, setAdminSubView] = useState<'dashboard' | 'employees' | 'centers' | 'reports' | 'contractors' | 'roles' | 'upload' | 'notes' | 'settings' | 'kpis' | 'logs'>('dashboard');
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -789,6 +830,12 @@ export default function App() {
               label="Notas y Registros"
             />
             <AdminNavButton 
+              active={adminSubView === 'logs'} 
+              onClick={() => setAdminSubView('logs')}
+              icon={<ShieldCheck className="w-5 h-5" />}
+              label="Logs de Seguridad"
+            />
+            <AdminNavButton 
               active={adminSubView === 'settings'} 
               onClick={() => setAdminSubView('settings')}
               icon={<Settings className="w-5 h-5" />}
@@ -830,6 +877,7 @@ export default function App() {
                 {adminSubView === 'roles' && <RoleManagement roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'upload' && <DataUploadView employees={employees} centers={centers} contractors={contractors} roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} />}
                 {adminSubView === 'notes' && <NotesView contractors={contractors} employees={employees} currentUser={currentUser} showSuccess={showSuccess} showError={showError} />}
+                {adminSubView === 'logs' && <LogsView />}
                 {adminSubView === 'settings' && <SettingsView />}
               </div>
             )}
@@ -838,7 +886,6 @@ export default function App() {
       </div>
     </div>
   );
-}
 
 function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAuthReady, authError, onGoogleLogin, onLogin, showSuccess, showError }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[], roles: CustomRole[], isAdminLogin: boolean, isAuthReady: boolean, authError: string | null, onGoogleLogin: () => void, onLogin: (e: Employee, centerId: string, asAdmin: boolean) => void, showSuccess: (m: string) => void, showError: (m: string) => void }) {
   const [selectedCenterId, setSelectedCenterId] = useState<string>('');
@@ -1355,6 +1402,7 @@ function AdminNavButton({ active, onClick, icon, label }: { active: boolean, onC
 
 function EmployeeView({ employee, centers, roles, contractors, initialCenterId, onLogout }: { employee: Employee, centers: WorkCenter[], roles: CustomRole[], contractors: Contractor[], initialCenterId?: string, onLogout: () => void }) {
   const [activeSession, setActiveSession] = useState<AttendanceRecord | null>(null);
+  const [isSessionLoading, setIsSessionLoading] = useState(true);
   const [lastSession, setLastSession] = useState<AttendanceRecord | null>(null);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
@@ -1374,8 +1422,12 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
   const allowedCenters = centers.filter(c => (employee.centerIds || []).includes(c.id));
 
   useEffect(() => {
+    console.log("DEBUG: EmployeeView employee.id:", employee.id);
+    setIsSessionLoading(true);
     const unsub = subscribeToActiveSession(employee.id, (session) => {
+      console.log("DEBUG: Active session updated:", session);
       setActiveSession(session);
+      setIsSessionLoading(false);
       if (session) {
         setSelectedCenter(centers.find(c => c.id === session.centerId) || null);
       }
@@ -1412,6 +1464,13 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
     setError(null);
     setSuccess(null);
     try {
+      if (activeSession) {
+        throw new Error("Ya tienes una sesión activa. Por favor, registra la salida primero.");
+      }
+
+      // Restriction: One backup per day per contractor
+      // Removed: now allowed to have multiple backups per day if previous ones have checked out
+      
       // Check margin
       if (!bypassRestriction && lastSession && lastSession.checkOut) {
         const cOut = safeParseISO(lastSession.checkOut);
@@ -1575,7 +1634,16 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
 
       <div className="bg-white rounded-2xl md:rounded-[3rem] shadow-2xl shadow-slate-200 p-6 md:p-12 border border-slate-100">
         <div className="text-center mb-10">
-          <h1 className="text-3xl md:text-5xl font-black text-slate-900 mb-4 uppercase tracking-tight">{employee.name}</h1>
+          <h1 className="text-3xl md:text-5xl font-black text-slate-900 mb-4 uppercase tracking-tight">
+            {activeSession?.backupRealName ? activeSession.backupRealName : employee.name}
+          </h1>
+          {activeSession?.backupRealName && (
+            <div className="mb-4">
+              <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-black uppercase tracking-widest">
+                Backup: {employee.name}
+              </span>
+            </div>
+          )}
           <div className="inline-flex flex-wrap justify-center gap-2 md:gap-4 p-4 md:p-6 bg-slate-50 rounded-2xl md:rounded-3xl border border-slate-100 shadow-inner">
             <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-sm border border-slate-100">
               <Briefcase className="w-4 h-4 text-tipsa-blue" />
@@ -1664,7 +1732,7 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
 
           <button
             onClick={() => activeSession ? handleCheckOut() : handleCheckIn()}
-            disabled={loading || (!activeSession && !selectedCenter)}
+            disabled={loading || isSessionLoading || (!activeSession && !selectedCenter)}
             className={cn(
               "w-full py-6 md:py-10 rounded-2xl md:rounded-[2.5rem] font-black text-xl md:text-3xl shadow-xl transition-all flex items-center justify-center gap-4",
               activeSession 
@@ -1672,7 +1740,7 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
                 : "bg-tipsa-blue text-white hover:bg-blue-700 shadow-blue-200 disabled:opacity-50 disabled:shadow-none"
             )}
           >
-            {loading ? "Procesando..." : (
+            {loading || isSessionLoading ? "Procesando..." : (
               <>
                 {activeSession ? <LogOut className="w-10 h-10" /> : <Clock className="w-10 h-10" />}
                 {activeSession ? "REGISTRAR SALIDA" : "REGISTRAR ENTRADA"}
@@ -1698,14 +1766,16 @@ function AttendanceEditModal({
   center, 
   onClose, 
   onSave, 
-  currentUser 
+  currentUser,
+  setConfirmDialog
 }: { 
   record: AttendanceRecord, 
   employee: Employee | undefined, 
   center: WorkCenter | undefined, 
   onClose: () => void, 
   onSave: (updated: Partial<AttendanceRecord>) => void,
-  currentUser: Employee | null
+  currentUser: Employee | null,
+  setConfirmDialog: (dialog: {message: string, onConfirm: () => void} | null) => void
 }) {
   const [checkIn, setCheckIn] = useState(record.checkIn.substring(0, 16));
   const [checkOut, setCheckOut] = useState(record.checkOut ? record.checkOut.substring(0, 16) : '');
@@ -1718,19 +1788,55 @@ function AttendanceEditModal({
   const extraHours = hours > stdHours ? hours - stdHours : 0;
   const lessHours = hours < stdHours ? stdHours - hours : 0;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (checkOut && new Date(checkOut) <= new Date(checkIn)) {
       setError("La fecha de salida debe ser posterior a la de entrada.");
       return;
     }
-    onSave({
+    
+    const updated = {
       id: record.id,
       checkIn: new Date(checkIn).toISOString(),
       checkOut: checkOut ? new Date(checkOut).toISOString() : null,
-      status: checkOut ? 'completed' : 'active',
+      status: (checkOut ? 'completed' : 'active') as 'completed' | 'active',
       modifiedBy: currentUser?.name || 'Admin',
       modifiedAt: new Date().toISOString()
+    };
+    
+    onSave(updated);
+    
+    await saveSecurityLog({
+      timestamp: new Date().toISOString(),
+      userId: currentUser?.id || 'unknown',
+      userName: currentUser?.name || 'Admin',
+      action: 'update',
+      collection: 'attendance',
+      recordId: record.id,
+      details: `Registro modificado: ${record.employeeName}. Entrada: ${record.checkIn} -> ${updated.checkIn}, Salida: ${record.checkOut} -> ${updated.checkOut}`
     });
+    onClose();
+  };
+
+  const handleDelete = () => {
+    setConfirmDialog({
+      message: "¿Estás seguro de que quieres borrar este registro?",
+      onConfirm: handleDeleteConfirmed
+    });
+  };
+
+  const handleDeleteConfirmed = async () => {
+    await deleteAttendanceRecord(record.id);
+    await saveSecurityLog({
+      timestamp: new Date().toISOString(),
+      userId: currentUser?.id || 'unknown',
+      userName: currentUser?.name || 'Admin',
+      action: 'delete',
+      collection: 'attendance',
+      recordId: record.id,
+      details: `Registro borrado: ${record.employeeName} (${record.checkIn})`
+    });
+    onClose();
+    window.location.reload(); // Refresh to update list
   };
 
   return (
@@ -1838,6 +1944,12 @@ function AttendanceEditModal({
             className="flex-1 py-4 px-6 rounded-2xl font-black text-sm text-slate-500 hover:bg-slate-50 transition-all uppercase tracking-widest"
           >
             Cancelar
+          </button>
+          <button 
+            onClick={handleDelete}
+            className="flex-1 py-4 px-6 rounded-2xl font-black text-sm bg-red-50 text-red-600 hover:bg-red-100 transition-all uppercase tracking-widest flex items-center justify-center gap-2"
+          >
+            <Trash2 className="w-5 h-5" /> BORRAR REGISTRO
           </button>
           <button 
             onClick={handleSave}
@@ -1949,6 +2061,7 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
           onClose={() => setSelectedLog(null)}
           onSave={handleUpdateRecord}
           currentUser={currentUser}
+          setConfirmDialog={setConfirmDialog}
         />
       )}
 
@@ -2938,6 +3051,7 @@ function ReportsView({ employees, centers, contractors, currentUser }: { employe
           onClose={() => setSelectedLog(null)}
           onSave={handleUpdateRecord}
           currentUser={currentUser}
+          setConfirmDialog={setConfirmDialog}
         />
       )}
       <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-sm">
@@ -3790,4 +3904,5 @@ function StatCard({ icon, label, value, color, onDoubleClick }: { icon: React.Re
       </div>
     </div>
   );
+}
 }
