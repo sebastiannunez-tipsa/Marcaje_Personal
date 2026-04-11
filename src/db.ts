@@ -67,12 +67,18 @@ export const initDB = async () => {
 
 export const subscribeToCollection = <T>(
   collectionName: string,
-  callback: (data: T[]) => void
+  callback: (data: T[]) => void,
+  onLoaded?: () => void
 ) => {
   const q = query(collection(db, collectionName));
+  let isFirstLoad = true;
   return onSnapshot(q, (snapshot) => {
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
     callback(data);
+    if (isFirstLoad && onLoaded) {
+      isFirstLoad = false;
+      onLoaded();
+    }
   }, (error) => {
     handleFirestoreError(error, OperationType.LIST, collectionName);
   });

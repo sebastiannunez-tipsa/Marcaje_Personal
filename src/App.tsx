@@ -172,8 +172,7 @@ import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
-export default function App() {
-  const { theme, setTheme } = useTheme();
+
 function LogsView() {
   const [logs, setLogs] = useState<SecurityLog[]>([]);
 
@@ -521,7 +520,8 @@ Enviado desde el Sistema de Gestión Tipsa`;
   );
 }
 
-
+export default function App() {
+  const { theme, setTheme } = useTheme();
   const [currentUser, setCurrentUser] = useState<Employee | null>(null);
   const [loginCenterId, setLoginCenterId] = useState<string>('');
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -532,6 +532,7 @@ Enviado desde el Sistema de Gestión Tipsa`;
   const [adminSubView, setAdminSubView] = useState<'dashboard' | 'employees' | 'centers' | 'reports' | 'contractors' | 'roles' | 'upload' | 'notes' | 'settings' | 'kpis' | 'logs'>('dashboard');
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{message: string, onConfirm: () => void} | null>(null);
@@ -587,10 +588,16 @@ Enviado desde el Sistema de Gestión Tipsa`;
 
     console.log("Auth is ready, current user:", auth.currentUser?.uid, "isAnonymous:", auth.currentUser?.isAnonymous);
 
-    const unsubEmployees = subscribeToCollection<Employee>('employees', setEmployees);
-    const unsubCenters = subscribeToCollection<WorkCenter>('centers', setCenters);
-    const unsubContractors = subscribeToCollection<Contractor>('contractors', setContractors);
-    const unsubRoles = subscribeToCollection<CustomRole>('roles', setRoles);
+    let loadedCount = 0;
+    const checkLoaded = () => {
+      loadedCount++;
+      if (loadedCount === 4) setIsDataLoaded(true);
+    };
+
+    const unsubEmployees = subscribeToCollection<Employee>('employees', setEmployees, checkLoaded);
+    const unsubCenters = subscribeToCollection<WorkCenter>('centers', setCenters, checkLoaded);
+    const unsubContractors = subscribeToCollection<Contractor>('contractors', setContractors, checkLoaded);
+    const unsubRoles = subscribeToCollection<CustomRole>('roles', setRoles, checkLoaded);
 
     return () => {
       unsubEmployees();
@@ -606,6 +613,17 @@ Enviado desde el Sistema de Gestión Tipsa`;
       saveEmployee({ ...admin, dni: 'X2224358M' });
     }
   }, [employees]);
+
+  if (!isAuthReady || !isDataLoaded) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-tipsa-blue"></div>
+          <p className="text-slate-500 font-bold animate-pulse">Cargando aplicación...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleLogin = async (employee: Employee, centerId: string, asAdmin: boolean = false) => {
     setCurrentUser(employee);
@@ -868,10 +886,10 @@ Enviado desde el Sistema de Gestión Tipsa`;
 
             {view === 'admin' && currentUser && (
               <div className="space-y-6">
-                {adminSubView === 'dashboard' && <AdminDashboard employees={employees} centers={centers} currentUser={currentUser} />}
+                {adminSubView === 'dashboard' && <AdminDashboard employees={employees} centers={centers} currentUser={currentUser} setConfirmDialog={setConfirmDialog} />}
                 {adminSubView === 'employees' && <EmployeeManagement employees={employees} centers={centers} contractors={contractors} roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'centers' && <CenterManagement centers={centers} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
-                {adminSubView === 'reports' && <ReportsView employees={employees} centers={centers} contractors={contractors} currentUser={currentUser} />}
+                {adminSubView === 'reports' && <ReportsView employees={employees} centers={centers} contractors={contractors} currentUser={currentUser} setConfirmDialog={setConfirmDialog} />}
                 {adminSubView === 'kpis' && <KPIsView employees={employees} centers={centers} contractors={contractors} />}
                 {adminSubView === 'contractors' && <ContractorManagement contractors={contractors} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
                 {adminSubView === 'roles' && <RoleManagement roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} confirm={confirm} />}
@@ -886,6 +904,7 @@ Enviado desde el Sistema de Gestión Tipsa`;
       </div>
     </div>
   );
+}
 
 function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAuthReady, authError, onGoogleLogin, onLogin, showSuccess, showError }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[], roles: CustomRole[], isAdminLogin: boolean, isAuthReady: boolean, authError: string | null, onGoogleLogin: () => void, onLogin: (e: Employee, centerId: string, asAdmin: boolean) => void, showSuccess: (m: string) => void, showError: (m: string) => void }) {
   const [selectedCenterId, setSelectedCenterId] = useState<string>('');
@@ -1059,12 +1078,6 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
       maximumAge: 0
     });
   }, [centers]);
-
-  useEffect(() => {
-    if (!isAdminLogin && centers.length > 0 && !selectedCenterId) {
-      detectNearestCenter();
-    }
-  }, [isAdminLogin, centers, selectedCenterId, detectNearestCenter]);
 
   return (
     <motion.div 
@@ -1777,8 +1790,11 @@ function AttendanceEditModal({
   currentUser: Employee | null,
   setConfirmDialog: (dialog: {message: string, onConfirm: () => void} | null) => void
 }) {
-  const [checkIn, setCheckIn] = useState(record.checkIn.substring(0, 16));
-  const [checkOut, setCheckOut] = useState(record.checkOut ? record.checkOut.substring(0, 16) : '');
+  const initialCheckIn = safeParseISO(record.checkIn);
+  const initialCheckOut = safeParseISO(record.checkOut);
+  
+  const [checkIn, setCheckIn] = useState(initialCheckIn ? format(initialCheckIn, "yyyy-MM-dd'T'HH:mm") : '');
+  const [checkOut, setCheckOut] = useState(initialCheckOut ? format(initialCheckOut, "yyyy-MM-dd'T'HH:mm") : '');
   const [error, setError] = useState<string | null>(null);
 
   const cIn = safeParseISO(checkIn);
@@ -1963,7 +1979,7 @@ function AttendanceEditModal({
   );
 }
 
-function AdminDashboard({ employees, centers, currentUser }: { employees: Employee[], centers: WorkCenter[], currentUser: Employee | null }) {
+function AdminDashboard({ employees, centers, currentUser, setConfirmDialog }: { employees: Employee[], centers: WorkCenter[], currentUser: Employee | null, setConfirmDialog: (dialog: {message: string, onConfirm: () => void} | null) => void }) {
   const { theme } = useTheme();
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
   const [selectedLog, setSelectedLog] = useState<AttendanceRecord | null>(null);
@@ -2034,9 +2050,13 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
       grouped[log.centerId].push(log);
     });
 
-    // Sort by checkIn ascending (oldest first)
+    // Sort by active status first, then checkIn ascending
     Object.keys(grouped).forEach(centerId => {
-      grouped[centerId].sort((a, b) => new Date(a.checkIn).getTime() - new Date(b.checkIn).getTime());
+      grouped[centerId].sort((a, b) => {
+        if (a.status === 'active' && b.status !== 'active') return -1;
+        if (a.status !== 'active' && b.status === 'active') return 1;
+        return new Date(a.checkIn).getTime() - new Date(b.checkIn).getTime();
+      });
     });
 
     return grouped;
@@ -2135,7 +2155,15 @@ function AdminDashboard({ employees, centers, currentUser }: { employees: Employ
             </div>
           </div>
           <div className="grid grid-cols-1 gap-6 max-h-[500px] overflow-auto pr-2 custom-scrollbar">
-            {centers.map(center => {
+            {[...centers].sort((a, b) => {
+              const aLogs = logsByCenter[a.id] || [];
+              const bLogs = logsByCenter[b.id] || [];
+              const aActive = aLogs.some(l => l.status === 'active');
+              const bActive = bLogs.some(l => l.status === 'active');
+              if (aActive && !bActive) return -1;
+              if (!aActive && bActive) return 1;
+              return bLogs.length - aLogs.length;
+            }).map(center => {
               const centerLogs = logsByCenter[center.id] || [];
               if (centerLogs.length === 0) return null;
 
@@ -2867,7 +2895,7 @@ function RoleManagement({ roles, onUpdate, showSuccess, showError, confirm }: { 
   );
 }
 
-function ReportsView({ employees, centers, contractors, currentUser }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[], currentUser: Employee | null }) {
+function ReportsView({ employees, centers, contractors, currentUser, setConfirmDialog }: { employees: Employee[], centers: WorkCenter[], contractors: Contractor[], currentUser: Employee | null, setConfirmDialog: (dialog: {message: string, onConfirm: () => void} | null) => void }) {
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
   const [selectedLog, setSelectedLog] = useState<AttendanceRecord | null>(null);
   const [filter, setFilter] = useState({ 
@@ -3904,5 +3932,4 @@ function StatCard({ icon, label, value, color, onDoubleClick }: { icon: React.Re
       </div>
     </div>
   );
-}
 }
