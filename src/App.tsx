@@ -140,6 +140,23 @@ const safeParseISO = (dateStr: string | undefined) => {
   }
 };
 
+const getAdjustedHours = (diffMinutes: number) => {
+  const absDiff = Math.abs(diffMinutes);
+  const hours = Math.floor(absDiff / 60);
+  const minutes = absDiff % 60;
+  
+  let adjustment = hours;
+  if (minutes <= 10) {
+    // No change
+  } else if (minutes <= 30) {
+    adjustment += 0.5;
+  } else {
+    adjustment += 1.0;
+  }
+  
+  return diffMinutes > 0 ? adjustment : -adjustment;
+};
+
 const safeFormatDate = (dateStr: string | undefined, formatStr: string = 'dd/MM/yy') => {
   const date = safeParseISO(dateStr);
   if (!date) return '-';
@@ -1799,10 +1816,13 @@ function AttendanceEditModal({
 
   const cIn = safeParseISO(checkIn);
   const cOut = safeParseISO(checkOut);
-  const hours = (cIn && cOut) ? differenceInHours(cOut, cIn) : 0;
-  const stdHours = employee?.standardHours || 8;
-  const extraHours = hours > stdHours ? hours - stdHours : 0;
-  const lessHours = hours < stdHours ? stdHours - hours : 0;
+  const workedMinutes = (cIn && cOut) ? differenceInMinutes(cOut, cIn) : 0;
+  const hours = workedMinutes / 60;
+  const stdMinutes = (employee?.standardHours || 8) * 60;
+  const diffMinutes = workedMinutes - stdMinutes;
+  const adjustedHours = getAdjustedHours(diffMinutes);
+  const extraHours = adjustedHours > 0 ? adjustedHours : 0;
+  const lessHours = adjustedHours < 0 ? Math.abs(adjustedHours) : 0;
 
   const handleSave = async () => {
     if (checkOut && new Date(checkOut) <= new Date(checkIn)) {
@@ -2006,16 +2026,18 @@ function AdminDashboard({ employees, centers, currentUser, setConfirmDialog }: {
       if (log.checkOut) {
         const cIn = safeParseISO(log.checkIn);
         const cOut = safeParseISO(log.checkOut);
-        const hours = (cIn && cOut) ? differenceInHours(cOut, cIn) : 0;
-        totalHours += hours;
+        const workedMinutes = (cIn && cOut) ? differenceInMinutes(cOut, cIn) : 0;
+        totalHours += (workedMinutes / 60);
         
         const emp = employees.find(e => e.id === log.employeeId);
-        const stdHours = emp?.standardHours || 8;
+        const stdMinutes = (emp?.standardHours || 8) * 60;
+        const diffMinutes = workedMinutes - stdMinutes;
+        const adjustedHours = getAdjustedHours(diffMinutes);
         
-        if (hours > stdHours) {
-          extraHours += (hours - stdHours);
-        } else if (hours < stdHours) {
-          lessHours += (stdHours - hours);
+        if (adjustedHours > 0) {
+          extraHours += adjustedHours;
+        } else if (adjustedHours < 0) {
+          lessHours += Math.abs(adjustedHours);
         }
       }
     });
@@ -3445,22 +3467,25 @@ function KPIsView({ employees, centers, contractors }: { employees: Employee[], 
       const cIn = safeParseISO(log.checkIn);
       const cOut = safeParseISO(log.checkOut);
       if (!cIn || !cOut) return false;
-      const worked = differenceInHours(cOut, cIn);
-      return worked > stdHours;
+      const workedMinutes = differenceInMinutes(cOut, cIn);
+      const stdMinutes = (emp?.standardHours || 8) * 60;
+      return getAdjustedHours(workedMinutes - stdMinutes) > 0;
     }).map(log => {
       const emp = employees.find(e => e.id === log.employeeId);
-      const stdHours = emp?.standardHours || 8;
+      const stdMinutes = (emp?.standardHours || 8) * 60;
       const cIn = safeParseISO(log.checkIn);
       const cOut = safeParseISO(log.checkOut);
-      const worked = (cIn && cOut) ? differenceInHours(cOut, cIn) : 0;
-      const extra = worked - stdHours;
+      const workedMinutes = (cIn && cOut) ? differenceInMinutes(cOut, cIn) : 0;
+      const diffMinutes = workedMinutes - stdMinutes;
+      const adjustedHours = getAdjustedHours(diffMinutes);
+      const extraWithMargin = adjustedHours > 0 ? adjustedHours : 0;
       return {
         ...log,
         employee: emp,
         date: safeFormatDate(log.checkIn, 'dd/MM/yyyy'),
         dayOfWeek: cIn ? format(cIn, 'EEEE', { locale: es }) : '-',
-        contractHours: stdHours,
-        extraHours: extra.toFixed(1)
+        contractHours: stdMinutes / 60,
+        extraHours: extraWithMargin.toFixed(1)
       };
     });
   }, [filteredLogs, employees]);
