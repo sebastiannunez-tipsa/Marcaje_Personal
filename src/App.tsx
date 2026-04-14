@@ -141,16 +141,30 @@ const safeParseISO = (dateStr: string | undefined) => {
 };
 
 const getAdjustedHours = (diffMinutes: number) => {
-  const absDiff = Math.abs(diffMinutes);
-  const hours = Math.floor(absDiff / 60);
-  const minutes = absDiff % 60;
+  // If difference is 10 minutes or less, it's 0.
+  if (Math.abs(diffMinutes) <= 10) {
+    return 0;
+  }
   
-  let adjustment = hours;
-  if (minutes <= 10) {
-    // No change
-  } else if (minutes <= 30) {
+  // Otherwise, calculate based on the full difference.
+  // The logic is:
+  // 11-30 min -> 0.5h
+  // 31+ min -> 1h (or more if it crosses hour boundaries)
+  
+  // Let's use the requested logic:
+  // 11-30 min -> 0.5h
+  // 31-59 min -> 1h
+  // 60+ min -> 1h + adjustment for remaining minutes
+  
+  const absDiff = Math.abs(diffMinutes);
+  const fullHours = Math.floor(absDiff / 60);
+  const remainingMinutes = absDiff % 60;
+  
+  let adjustment = fullHours;
+  
+  if (remainingMinutes > 10 && remainingMinutes <= 30) {
     adjustment += 0.5;
-  } else {
+  } else if (remainingMinutes > 30) {
     adjustment += 1.0;
   }
   
