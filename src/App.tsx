@@ -141,34 +141,18 @@ const safeParseISO = (dateStr: string | undefined) => {
 };
 
 const getAdjustedHours = (diffMinutes: number) => {
+  const absDiff = Math.abs(diffMinutes);
+  
   // If difference is 10 minutes or less, it's 0.
-  if (Math.abs(diffMinutes) <= 10) {
+  if (absDiff <= 10) {
     return 0;
   }
   
-  // Otherwise, calculate based on the full difference.
-  // The logic is:
-  // 11-30 min -> 0.5h
-  // 31+ min -> 1h (or more if it crosses hour boundaries)
+  // For > 10, round up to nearest 30 mins and convert to hours
+  const roundedMinutes = Math.ceil(absDiff / 30) * 30;
+  const hours = roundedMinutes / 60;
   
-  // Let's use the requested logic:
-  // 11-30 min -> 0.5h
-  // 31-59 min -> 1h
-  // 60+ min -> 1h + adjustment for remaining minutes
-  
-  const absDiff = Math.abs(diffMinutes);
-  const fullHours = Math.floor(absDiff / 60);
-  const remainingMinutes = absDiff % 60;
-  
-  let adjustment = fullHours;
-  
-  if (remainingMinutes > 10 && remainingMinutes <= 30) {
-    adjustment += 0.5;
-  } else if (remainingMinutes > 30) {
-    adjustment += 1.0;
-  }
-  
-  return diffMinutes > 0 ? adjustment : -adjustment;
+  return diffMinutes > 0 ? hours : -hours;
 };
 
 const safeFormatDate = (dateStr: string | undefined, formatStr: string = 'dd/MM/yy') => {
@@ -2019,10 +2003,36 @@ function AdminDashboard({ employees, centers, currentUser, setConfirmDialog }: {
   const [selectedLog, setSelectedLog] = useState<AttendanceRecord | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [recordsLimit, setRecordsLimit] = useState(10);
+  const [inactivityThresholdDays, setInactivityThresholdDays] = useState(30);
+  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [dateRange, setDateRange] = useState({
     from: format(new Date(), 'yyyy-MM-dd'),
     to: format(new Date(), 'yyyy-MM-dd')
   });
+
+  useEffect(() => {
+    const unsub = subscribeToCollection<AttendanceRecord>('attendance', setAllAttendance);
+    return () => unsub();
+  }, []);
+
+  const inactiveEmployees = React.useMemo(() => {
+    const now = new Date();
+    const thresholdDate = new Date();
+    thresholdDate.setDate(now.getDate() - inactivityThresholdDays);
+
+    const lastAttendanceMap = new Map<string, Date>();
+    allAttendance.forEach(log => {
+      const checkIn = new Date(log.checkIn);
+      if (!lastAttendanceMap.has(log.employeeId) || checkIn > lastAttendanceMap.get(log.employeeId)!) {
+        lastAttendanceMap.set(log.employeeId, checkIn);
+      }
+    });
+
+    return employees.filter(emp => {
+      const lastAttendance = lastAttendanceMap.get(emp.id);
+      return !lastAttendance || lastAttendance < thresholdDate;
+    });
+  }, [allAttendance, employees, inactivityThresholdDays]);
 
   useEffect(() => {
     const unsub = subscribeToAttendanceRange(dateRange.from, dateRange.to, setLogs);
@@ -2264,6 +2274,50 @@ function AdminDashboard({ employees, centers, currentUser, setConfirmDialog }: {
                 </div>
               );
             })}
+          </div>
+        </div>
+        
+        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">Empleados Inactivos</h3>
+            <div className="flex items-center gap-2">
+              <input 
+                type="number"
+                value={inactivityThresholdDays}
+                onChange={e => setInactivityThresholdDays(Number(e.target.value))}
+                className="w-16 p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-sm outline-none dark:text-white"
+              />
+              <span className="text-xs font-bold text-slate-500">días</span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-slate-400 uppercase tracking-widest font-black border-b border-slate-100 dark:border-slate-700">
+                  <th className="pb-4">Empleado</th>
+                  <th className="pb-4 text-right">Último Registro</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                {inactiveEmployees.map(emp => {
+                  const lastAttendance = allAttendance
+                    .filter(log => log.employeeId === emp.id)
+                    .sort((a, b) => new Date(b.checkIn).getTime() - new Date(a.checkIn).getTime())[0];
+                  
+                  return (
+                    <tr key={emp.id} className="text-slate-900 dark:text-white font-bold">
+                      <td className="py-4">{emp.name}</td>
+                      <td className="py-4 text-right text-slate-500 dark:text-slate-400">
+                        {lastAttendance ? safeFormatDate(lastAttendance.checkIn, 'dd/MM/yyyy') : 'Nunca'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {inactiveEmployees.length === 0 && (
+              <p className="text-sm text-slate-500 text-center py-8">No hay empleados inactivos.</p>
+            )}
           </div>
         </div>
       </div>
