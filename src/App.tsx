@@ -1085,14 +1085,21 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
       }
       setIsDetecting(false);
     }, (err) => {
-      console.warn("Geolocalización denegada o fallida:", err.message);
-      setError("No se pudo detectar tu ubicación automáticamente. Por favor, selecciona el centro manualmente.");
+      console.warn("Geolocalización denegada o fallida:", err.code, err.message);
+      setError(`Error de ubicación (${err.code}): ${err.message}. Por favor, selecciona el centro manualmente.`);
       setIsDetecting(false);
     }, {
-      timeout: 5000,
-      maximumAge: 0
+      timeout: 15000,
+      maximumAge: 60000,
+      enableHighAccuracy: false
     });
   }, [centers]);
+
+  useEffect(() => {
+    if (centers.length > 0 && !selectedCenterId) {
+      detectNearestCenter();
+    }
+  }, [centers, detectNearestCenter]);
 
   return (
     <motion.div 
