@@ -775,13 +775,6 @@ export default function App() {
               </span>
             </div>
             <button 
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="p-2.5 hover:bg-slate-700 rounded-xl text-slate-300 transition-all border border-transparent hover:border-slate-600"
-              title="Cambiar tema"
-            >
-              {theme === 'dark' ? <Monitor className="w-5 h-5" /> : <Smartphone className="w-5 h-5" />}
-            </button>
-            <button 
               onClick={handleLogout}
               className="p-2.5 hover:bg-slate-700 rounded-xl text-slate-300 transition-all border border-transparent hover:border-slate-600"
               title="Cerrar sesión"
@@ -868,12 +861,6 @@ export default function App() {
               icon={<ShieldCheck className="w-5 h-5" />}
               label="Logs de Seguridad"
             />
-            <AdminNavButton 
-              active={adminSubView === 'settings'} 
-              onClick={() => setAdminSubView('settings')}
-              icon={<Settings className="w-5 h-5" />}
-              label="Configuración"
-            />
           </aside>
         )}
 
@@ -911,7 +898,6 @@ export default function App() {
                 {adminSubView === 'upload' && <DataUploadView employees={employees} centers={centers} contractors={contractors} roles={roles} onUpdate={fetchData} showSuccess={showSuccess} showError={showError} />}
                 {adminSubView === 'notes' && <NotesView contractors={contractors} employees={employees} currentUser={currentUser} showSuccess={showSuccess} showError={showError} />}
                 {adminSubView === 'logs' && <LogsView />}
-                {adminSubView === 'settings' && <SettingsView />}
               </div>
             )}
           </AnimatePresence>
@@ -1324,97 +1310,6 @@ function LoginView({ employees, centers, contractors, roles, isAdminLogin, isAut
         </div>
       </div>
     </motion.div>
-  );
-}
-
-function SettingsView() {
-  const { theme, setTheme } = useTheme();
-  const [selectedTheme, setSelectedTheme] = useState(theme);
-
-  useEffect(() => {
-    setSelectedTheme(theme);
-  }, [theme]);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Configuración</h2>
-      </div>
-
-      <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm">
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-widest mb-4">Apariencia</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Elige cómo se ve la aplicación en tu dispositivo.</p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button
-                onClick={() => setSelectedTheme('light')}
-                className={cn(
-                  "flex flex-col items-center gap-4 p-6 rounded-3xl border-2 transition-all",
-                  selectedTheme === 'light' 
-                    ? "border-tipsa-blue bg-blue-50 dark:bg-blue-900/20" 
-                    : "border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600"
-                )}
-              >
-                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
-                  <Monitor className="w-6 h-6 text-slate-400" />
-                </div>
-                <div className="text-center">
-                  <div className="font-black text-slate-900 dark:text-white uppercase text-xs tracking-widest">Claro</div>
-                  <div className="text-[10px] font-bold text-slate-400 mt-1">Tema tradicional</div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedTheme('dark')}
-                className={cn(
-                  "flex flex-col items-center gap-4 p-6 rounded-3xl border-2 transition-all",
-                  selectedTheme === 'dark' 
-                    ? "border-tipsa-blue bg-blue-50 dark:bg-blue-900/20" 
-                    : "border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600"
-                )}
-              >
-                <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm">
-                  <Smartphone className="w-6 h-6 text-white" />
-                </div>
-                <div className="text-center">
-                  <div className="font-black text-slate-900 dark:text-white uppercase text-xs tracking-widest">Oscuro</div>
-                  <div className="text-[10px] font-bold text-slate-400 mt-1">Ideal para la noche</div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedTheme('system')}
-                className={cn(
-                  "flex flex-col items-center gap-4 p-6 rounded-3xl border-2 transition-all",
-                  selectedTheme === 'system' 
-                    ? "border-tipsa-blue bg-blue-50 dark:bg-blue-900/20" 
-                    : "border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600"
-                )}
-              >
-                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center shadow-sm">
-                  <RefreshCw className="w-6 h-6 text-slate-400" />
-                </div>
-                <div className="text-center">
-                  <div className="font-black text-slate-900 dark:text-white uppercase text-xs tracking-widest">Sistema</div>
-                  <div className="text-[10px] font-bold text-slate-400 mt-1">Sincroniza con tu dispositivo</div>
-                </div>
-              </button>
-            </div>
-            
-            <div className="mt-8 flex justify-end">
-              <button
-                onClick={() => setTheme(selectedTheme)}
-                className="bg-tipsa-blue text-white px-8 py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-700 transition-all"
-              >
-                Aplicar Cambios
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
