@@ -192,7 +192,7 @@ function LogsView() {
   const [logs, setLogs] = useState<SecurityLog[]>([]);
 
   useEffect(() => {
-    const q = query(collection(db, 'security_logs'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'security_logs'), orderBy('timestamp', 'desc'), limit(100));
     return onSnapshot(q, (snapshot) => {
       setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SecurityLog)));
     });
@@ -240,7 +240,7 @@ function NotesView({ contractors, employees, currentUser, showSuccess, showError
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'notes'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'notes'), orderBy('createdAt', 'desc'), limit(100));
     return onSnapshot(q, (snapshot) => {
       setNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note)));
     }, (error) => {
@@ -1906,35 +1906,21 @@ function AdminDashboard({ employees, centers, currentUser, setConfirmDialog }: {
   const [searchTerm, setSearchTerm] = useState('');
   const [recordsLimit, setRecordsLimit] = useState(10);
   const [inactivityThresholdDays, setInactivityThresholdDays] = useState(30);
-  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [dateRange, setDateRange] = useState({
     from: format(new Date(), 'yyyy-MM-dd'),
     to: format(new Date(), 'yyyy-MM-dd')
   });
-
-  useEffect(() => {
-    const unsub = subscribeToCollection<AttendanceRecord>('attendance', setAllAttendance);
-    return () => unsub();
-  }, []);
 
   const inactiveEmployees = React.useMemo(() => {
     const now = new Date();
     const thresholdDate = new Date();
     thresholdDate.setDate(now.getDate() - inactivityThresholdDays);
 
-    const lastAttendanceMap = new Map<string, Date>();
-    allAttendance.forEach(log => {
-      const checkIn = new Date(log.checkIn);
-      if (!lastAttendanceMap.has(log.employeeId) || checkIn > lastAttendanceMap.get(log.employeeId)!) {
-        lastAttendanceMap.set(log.employeeId, checkIn);
-      }
-    });
-
     return employees.filter(emp => {
-      const lastAttendance = lastAttendanceMap.get(emp.id);
-      return !lastAttendance || lastAttendance < thresholdDate;
+      const lastAtt = emp.lastAttendance ? new Date(emp.lastAttendance) : null;
+      return !lastAtt || lastAtt < thresholdDate;
     });
-  }, [allAttendance, employees, inactivityThresholdDays]);
+  }, [employees, inactivityThresholdDays]);
 
   useEffect(() => {
     const unsub = subscribeToAttendanceRange(dateRange.from, dateRange.to, setLogs);
@@ -2202,15 +2188,11 @@ function AdminDashboard({ employees, centers, currentUser, setConfirmDialog }: {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {inactiveEmployees.map(emp => {
-                  const lastAttendance = allAttendance
-                    .filter(log => log.employeeId === emp.id)
-                    .sort((a, b) => new Date(b.checkIn).getTime() - new Date(a.checkIn).getTime())[0];
-                  
                   return (
                     <tr key={emp.id} className="text-slate-900 dark:text-white font-bold">
                       <td className="py-4">{emp.name}</td>
                       <td className="py-4 text-right text-slate-500 dark:text-slate-400">
-                        {lastAttendance ? safeFormatDate(lastAttendance.checkIn, 'dd/MM/yyyy') : 'Nunca'}
+                        {emp.lastAttendance ? safeFormatDate(emp.lastAttendance, 'dd/MM/yyyy') : 'Nunca'}
                       </td>
                     </tr>
                   );
@@ -2903,9 +2885,9 @@ function ReportsView({ employees, centers, contractors, currentUser, setConfirmD
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
 
   useEffect(() => {
-    const unsub = subscribeToCollection<AttendanceRecord>('attendance', setLogs);
+    const unsub = subscribeToAttendanceRange(filter.startDate, filter.endDate, setLogs);
     return () => unsub();
-  }, []);
+  }, [filter.startDate, filter.endDate]);
 
   const filteredEmployeesForSearch = employees.filter(e => {
     const matchesSearch = e.name.toLowerCase().includes(employeeSearch.toLowerCase());
@@ -2920,7 +2902,6 @@ function ReportsView({ employees, centers, contractors, currentUser, setConfirmD
   });
 
   const filteredLogs = logs.filter(log => {
-    const logDate = safeFormatDate(log.checkIn, 'yyyy-MM-dd');
     const emp = employees.find(e => e.id === log.employeeId);
     
     let isActiveMatch = true;
@@ -2933,8 +2914,7 @@ function ReportsView({ employees, centers, contractors, currentUser, setConfirmD
       (!filter.employeeId || log.employeeId === filter.employeeId) &&
       (!filter.centerId || log.centerId === filter.centerId) &&
       (!filter.contractorId || emp?.contractorId === filter.contractorId) &&
-      isActiveMatch &&
-      logDate >= filter.startDate && logDate <= filter.endDate
+      isActiveMatch
     );
   });
 

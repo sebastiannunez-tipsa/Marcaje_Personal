@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, getDocs, onSnapshot, query, addDoc, updateDoc, deleteDoc, getDocFromServer, where, limit } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, onSnapshot, query, addDoc, updateDoc, deleteDoc, getDoc, where, limit } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from './firebase';
 import { Employee, WorkCenter, Contractor, CustomRole, AttendanceRecord, Note, SecurityLog } from './types';
@@ -54,15 +54,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Connect to Firestore and authenticate anonymously
+// Initialize DB (can be empty now as persistence is handled in firebase.ts)
 export const initDB = async () => {
-  try {
-    // Just a connection test, auth is handled in App.tsx
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("Firestore connection test successful");
-  } catch (error: any) {
-    console.warn("Firestore connection test failed (this is normal if collection doesn't exist yet):", error.message);
-  }
+  console.log("Firestore initialized");
 };
 
 export const subscribeToCollection = <T>(
@@ -190,6 +184,11 @@ export const checkIn = async (record: Omit<AttendanceRecord, 'id'>) => {
   try {
     const newId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     await setDoc(doc(db, 'attendance', newId), cleanData({ ...record, id: newId }));
+    
+    // Update lastAttendance on employee
+    await updateDoc(doc(db, 'employees', record.employeeId), {
+      lastAttendance: record.checkIn
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'attendance');
   }
@@ -197,10 +196,20 @@ export const checkIn = async (record: Omit<AttendanceRecord, 'id'>) => {
 
 export const checkOut = async (recordId: string, checkOutTime: string) => {
   try {
+    const attDoc = await getDoc(doc(db, 'attendance', recordId));
+    const attData = attDoc.data() as AttendanceRecord;
+
     await updateDoc(doc(db, 'attendance', recordId), cleanData({
       checkOut: checkOutTime,
       status: 'completed'
     }));
+
+    if (attData && attData.employeeId) {
+      // Update lastAttendance on employee (though checkIn already did it, double check for consistency)
+      await updateDoc(doc(db, 'employees', attData.employeeId), {
+        lastAttendance: checkOutTime
+      });
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `attendance/${recordId}`);
   }

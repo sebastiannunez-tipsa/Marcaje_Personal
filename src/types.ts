@@ -29,6 +29,7 @@ export interface Employee {
   standardHours?: number;
   password?: string;
   firebaseUid?: string;
+  lastAttendance?: string;
 }
 
 export interface Contractor {
