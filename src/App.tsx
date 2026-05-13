@@ -8,6 +8,7 @@ import {
   LogOut, 
   CheckCircle2, 
   AlertCircle, 
+  AlertTriangle,
   BarChart3, 
   Users, 
   History,
@@ -549,6 +550,7 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{message: string, onConfirm: () => void} | null>(null);
 
@@ -609,10 +611,19 @@ export default function App() {
       if (loadedCount === 4) setIsDataLoaded(true);
     };
 
-    const unsubEmployees = subscribeToCollection<Employee>('employees', setEmployees, checkLoaded);
-    const unsubCenters = subscribeToCollection<WorkCenter>('centers', setCenters, checkLoaded);
-    const unsubContractors = subscribeToCollection<Contractor>('contractors', setContractors, checkLoaded);
-    const unsubRoles = subscribeToCollection<CustomRole>('roles', setRoles, checkLoaded);
+    const handleDataError = (err: any) => {
+      if (err?.message?.includes('Quota exceeded') || err?.message?.includes('quota metric')) {
+        setQuotaExceeded(true);
+        setIsDataLoaded(true); // Stop loading indicator
+      } else {
+        handleFirestoreError(err, OperationType.LIST, 'initial_load');
+      }
+    };
+
+    const unsubEmployees = subscribeToCollection<Employee>('employees', setEmployees, checkLoaded, handleDataError);
+    const unsubCenters = subscribeToCollection<WorkCenter>('centers', setCenters, checkLoaded, handleDataError);
+    const unsubContractors = subscribeToCollection<Contractor>('contractors', setContractors, checkLoaded, handleDataError);
+    const unsubRoles = subscribeToCollection<CustomRole>('roles', setRoles, checkLoaded, handleDataError);
 
     return () => {
       unsubEmployees();
@@ -640,6 +651,34 @@ export default function App() {
     };
     migrate();
   }, [isDataLoaded, employees]);
+
+  if (quotaExceeded) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white dark:bg-slate-800 p-10 rounded-[2.5rem] shadow-2xl border border-red-100 dark:border-red-900/30 text-center">
+          <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-3xl flex items-center justify-center mx-auto mb-8">
+            <AlertTriangle className="w-10 h-10 text-red-500" />
+          </div>
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter mb-4">Límite Superado</h2>
+          <p className="text-slate-500 dark:text-slate-400 font-bold text-sm leading-relaxed mb-8">
+            Se ha alcanzado el límite de uso gratuito de la base de datos para hoy. El servicio se restablecerá automáticamente mañana.
+          </p>
+          <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-2xl text-left border border-slate-100 dark:border-slate-800">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Información del Sistema</p>
+            <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+              Firestore Quota Exceeded (Free Tier). This is a limitation of the current Spark plan.
+            </p>
+          </div>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-8 w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:scale-[1.02] active:scale-95 transition-all"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthReady || !isDataLoaded) {
     return (

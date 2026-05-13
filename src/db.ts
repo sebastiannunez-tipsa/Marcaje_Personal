@@ -32,8 +32,14 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const isQuotaExceeded = error instanceof Error && (
+    error.message.includes('Quota exceeded') || 
+    error.message.includes('quota metric') ||
+    error.message.includes('billing instrument')
+  );
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: isQuotaExceeded ? "QUOTA_EXCEEDED" : (error instanceof Error ? error.message : String(error)),
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -50,7 +56,13 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  
+  if (isQuotaExceeded) {
+    console.error('CRITICAL: Firestore Quota Exceeded. The app will stop making requests for this session.');
+  } else {
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+  }
+  
   throw new Error(JSON.stringify(errInfo));
 }
 
@@ -68,7 +80,8 @@ export const initDB = async () => {
 export const subscribeToCollection = <T>(
   collectionName: string,
   callback: (data: T[]) => void,
-  onLoaded?: () => void
+  onLoaded?: () => void,
+  onError?: (error: any) => void
 ) => {
   const q = query(collection(db, collectionName));
   let isFirstLoad = true;
@@ -80,7 +93,11 @@ export const subscribeToCollection = <T>(
       onLoaded();
     }
   }, (error) => {
-    handleFirestoreError(error, OperationType.LIST, collectionName);
+    if (onError) {
+      onError(error);
+    } else {
+      handleFirestoreError(error, OperationType.LIST, collectionName);
+    }
   });
 };
 
