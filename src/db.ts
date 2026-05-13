@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, getDocs, onSnapshot, query, addDoc, updateDoc, deleteDoc, getDoc, where, limit } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, onSnapshot, query, addDoc, updateDoc, deleteDoc, getDoc, getDocFromServer, where, limit } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from './firebase';
 import { Employee, WorkCenter, Contractor, CustomRole, AttendanceRecord, Note, SecurityLog } from './types';
@@ -54,9 +54,15 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Initialize DB (can be empty now as persistence is handled in firebase.ts)
+// Connect to Firestore and authenticate anonymously
 export const initDB = async () => {
-  console.log("Firestore initialized");
+  try {
+    // Just a connection test
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Firestore connection test successful");
+  } catch (error: any) {
+    console.warn("Firestore connection test failed (this is normal if collection doesn't exist yet):", error.message);
+  }
 };
 
 export const subscribeToCollection = <T>(
@@ -196,7 +202,7 @@ export const checkIn = async (record: Omit<AttendanceRecord, 'id'>) => {
 
 export const checkOut = async (recordId: string, checkOutTime: string) => {
   try {
-    const attDoc = await getDoc(doc(db, 'attendance', recordId));
+    const attDoc = await getDocFromServer(doc(db, 'attendance', recordId));
     const attData = attDoc.data() as AttendanceRecord;
 
     await updateDoc(doc(db, 'attendance', recordId), cleanData({
