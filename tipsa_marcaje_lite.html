@@ -431,11 +431,18 @@ tr.active-row td { background: #ecfdf5; }
 
   <!-- DASHBOARD -->
   <div id="tabDashboard">
-    <div class="grid-4 mb-6">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px" class="mb-6">
       <div class="stat-card"><div class="stat-label">Empleados Hoy</div><div class="stat-value" id="statEmployees">0</div></div>
       <div class="stat-card"><div class="stat-label">Total Horas</div><div class="stat-value" id="statHours">0h</div></div>
       <div class="stat-card"><div class="stat-label">H. Extras</div><div class="stat-value text-success" id="statExtra">+0h</div></div>
       <div class="stat-card"><div class="stat-label">H. Menos</div><div class="stat-value text-danger" id="statLess">-0h</div></div>
+      <div class="stat-card" id="quotaCard" style="border-color:#e2e8f0">
+        <div class="stat-label">Cuota Lecturas</div>
+        <div class="stat-value text-sm" id="statQuota" style="font-size:14px">-</div>
+        <div style="height:4px;background:#e2e8f0;border-radius:4px;margin-top:6px;overflow:hidden">
+          <div id="quotaBar" style="height:100%;background:var(--success);border-radius:4px;width:0%;transition:width 0.3s"></div>
+        </div>
+      </div>
     </div>
     <div class="card">
       <div class="flex justify-between items-center mb-4">
@@ -584,7 +591,36 @@ let ACTIVE_SESSION = null;
 let IS_ADMIN_MODE = false;
 let SELECTED_CENTER_ID = null;
 let POLL_INTERVAL = null;
+let INACTIVITY_TIMER = null;
 let CACHE_TS = {};
+
+// ── Quota Control ──
+const QUOTA_LIMIT = 40000;
+const QUOTA_WARN = 35000;
+let READS_TODAY = parseInt(localStorage.getItem('tipsa_reads_count') || '0');
+let READS_DATE = localStorage.getItem('tipsa_reads_date') || '';
+
+// Reset counter if new day
+if (READS_DATE !== todayStr()) { READS_TODAY = 0; READS_DATE = todayStr(); saveQuota(); }
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function saveQuota() {
+  localStorage.setItem('tipsa_reads_count', String(READS_TODAY));
+  localStorage.setItem('tipsa_reads_date', READS_DATE);
+}
+function addReads(n) {
+  READS_TODAY += n;
+  saveQuota();
+  if (READS_TODAY >= QUOTA_LIMIT) {
+    toast(`⚠️ LÍMITE DE CUOTA ALCANZADO (${READS_TODAY}/${QUOTA_LIMIT}). App en modo offline.`, 'error');
+    return false;
+  }
+  if (READS_TODAY >= QUOTA_WARN) {
+    console.warn(`⚠️ Quota warning: ${READS_TODAY}/${QUOTA_LIMIT} reads`);
+  }
+  return true;
+}
+function quotaOK() { return READS_TODAY < QUOTA_LIMIT; }
 
 // ── Firestore Value Helpers ──
 const toVal = v => {
@@ -649,7 +685,7 @@ async function fbAuth() {
 
 async function fbGetAll(col) {
   const cacheKey = `tipsa_cache_${col}`;
-  const cacheTTL = 30000; // 30s cache
+  const cacheTTL = 300000; // 5 min cache (was 30s → saves massive reads on repeated loads)
   
   // Check localStorage cache first
   if (CACHE_TS[col] && (Date.now() - CACHE_TS[col]) < cacheTTL) {
@@ -657,15 +693,18 @@ async function fbGetAll(col) {
     if (cached) return JSON.parse(cached);
   }
   
-  // Use runQuery instead of GET list - Firestore security rules treat 'list' differently from 'get'
-  // and the deployed rules only allow 'read' (get+list via SDK) but REST API list requires explicit 'list' permission
-  // runQuery with no filter returns all docs and works with 'get' permission
+  // Quota guard: if near limit, use cache even if stale
+  if (!quotaOK()) {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) { console.warn(`Quota limit - using cached ${col}`); return JSON.parse(cached); }
+    throw new Error('QUOTA_EXCEEDED');
+  }
+  
   const r = await fetch(`${FB_QUERY}?key=${CFG.apiKey}`, {
     method: 'POST', headers: headers(),
     body: JSON.stringify({ structuredQuery: { from: [{ collectionId: col }], limit: 1000 } })
   });
   if (r.status === 429) {
-    // Quota exceeded - try cache
     const cached = localStorage.getItem(cacheKey);
     if (cached) { toast('Cuota Firebase agotada. Usando datos en caché.', 'error'); return JSON.parse(cached); }
     throw new Error('QUOTA_EXCEEDED');
@@ -678,6 +717,9 @@ async function fbGetAll(col) {
   const d = await r.json();
   const docs = d.filter(x => x.document).map(x => docToObj(x.document));
   
+  // Count reads
+  addReads(Math.max(docs.length, 1));
+  
   // Save to cache
   localStorage.setItem(cacheKey, JSON.stringify(docs));
   CACHE_TS[col] = Date.now();
@@ -685,6 +727,12 @@ async function fbGetAll(col) {
 }
 
 async function fbQuery(structuredQuery) {
+  // Quota guard
+  if (!quotaOK()) {
+    toast('Límite de lecturas alcanzado. Reintenta mañana.', 'error');
+    return [];
+  }
+  
   const r = await fetch(`${FB_QUERY}?key=${CFG.apiKey}`, {
     method: 'POST', headers: headers(),
     body: JSON.stringify({ structuredQuery })
@@ -695,7 +743,12 @@ async function fbQuery(structuredQuery) {
   }
   if (!r.ok) return [];
   const d = await r.json();
-  return d.filter(x => x.document).map(x => docToObj(x.document));
+  const docs = d.filter(x => x.document).map(x => docToObj(x.document));
+  
+  // Count reads
+  addReads(Math.max(docs.length, 1));
+  
+  return docs;
 }
 
 async function fbSet(col, id, data) {
@@ -745,7 +798,6 @@ const hoursWorked = (ci, co) => {
   if (!ci || !co) return 0;
   return (new Date(co) - new Date(ci)) / 3600000;
 };
-const todayISO = () => new Date().toISOString().slice(0, 10);
 
 // ── UI Helpers ──
 function $(id) { return document.getElementById(id); }
@@ -940,7 +992,8 @@ function doLogin() {
 }
 
 function doLogout() {
-  if (POLL_INTERVAL) clearInterval(POLL_INTERVAL);
+  if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
+  if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
   $('inpPassword').value = '';
   showLogin();
 }
@@ -948,6 +1001,17 @@ function doLogout() {
 // ══════════════════════════════════════
 //  EMPLOYEE VIEW
 // ══════════════════════════════════════
+const POLL_MS = 30000;       // Poll every 30s (was 10s → 3x fewer reads)
+const INACTIVITY_MS = 300000; // Auto-logout after 5 min inactivity
+
+function resetInactivity() {
+  if (INACTIVITY_TIMER) clearTimeout(INACTIVITY_TIMER);
+  INACTIVITY_TIMER = setTimeout(() => {
+    toast('Sesión cerrada por inactividad (5 min)', 'error');
+    doLogout();
+  }, INACTIVITY_MS);
+}
+
 async function showEmployeeView() {
   show('viewEmployee');
   const emp = CURRENT_USER;
@@ -982,9 +1046,15 @@ async function showEmployeeView() {
   // Load active session
   await checkActiveSession();
   
-  // Poll every 10s
+  // Poll every 30s (NOT 10s) + auto-logout on inactivity
   if (POLL_INTERVAL) clearInterval(POLL_INTERVAL);
-  POLL_INTERVAL = setInterval(checkActiveSession, 10000);
+  POLL_INTERVAL = setInterval(checkActiveSession, POLL_MS);
+  resetInactivity();
+  
+  // Reset inactivity on any interaction
+  ['click', 'touchstart', 'keydown'].forEach(evt => 
+    document.addEventListener(evt, resetInactivity, { passive: true })
+  );
 }
 
 function selectEmpCenter(id) {
@@ -1138,7 +1208,7 @@ function showAdminView() {
   show('viewAdmin');
   
   // Set default dates
-  const today = todayISO();
+  const today = todayStr();
   const monthStart = today.slice(0, 8) + '01';
   $('dashDateFrom').value = today;
   $('dashDateTo').value = today;
@@ -1171,6 +1241,20 @@ function setAdminTab(tab) {
   if (tab === 'employees') renderEmployeeTable();
   if (tab === 'centers') renderCenterTable();
   if (tab === 'contractors') renderContractorTable();
+}
+
+// ── Quota UI ──
+function updateQuotaUI() {
+  const el = $('statQuota');
+  const bar = $('quotaBar');
+  const card = $('quotaCard');
+  if (!el) return;
+  const pct = Math.min((READS_TODAY / QUOTA_LIMIT) * 100, 100);
+  el.textContent = `${READS_TODAY.toLocaleString()} / ${QUOTA_LIMIT.toLocaleString()}`;
+  bar.style.width = pct + '%';
+  if (pct >= 90) { bar.style.background = 'var(--danger)'; card.style.borderColor = '#fca5a5'; }
+  else if (pct >= 70) { bar.style.background = 'var(--warn)'; card.style.borderColor = '#fcd34d'; }
+  else { bar.style.background = 'var(--success)'; card.style.borderColor = '#e2e8f0'; }
 }
 
 // ── Dashboard ──
@@ -1207,6 +1291,9 @@ async function loadDashboard() {
   $('statHours').textContent = totalH.toFixed(1) + 'h';
   $('statExtra').textContent = '+' + extraH.toFixed(1) + 'h';
   $('statLess').textContent = '-' + lessH.toFixed(1) + 'h';
+  
+  // Quota indicator
+  updateQuotaUI();
   
   // Table
   const tbody = $('dashTableBody');
@@ -1709,7 +1796,10 @@ async function saveEmployee(existingId) {
   
   try {
     await fbSet('employees', id, emp);
-    DATA.employees = await fbGetAll('employees');
+    // Update local array instead of re-fetching (saves ~50 reads)
+    const idx = DATA.employees.findIndex(e => e.id === id);
+    if (idx >= 0) DATA.employees[idx] = emp; else DATA.employees.push(emp);
+    delete CACHE_TS['employees']; // Invalidate cache for next full load
     hide('modalEdit');
     toast(existingId ? 'Empleado actualizado' : 'Empleado creado');
     renderEmployeeTable();
@@ -1721,7 +1811,8 @@ async function removeEmployee(id) {
   if (!confirm(`¿Eliminar a ${emp?.name}?`)) return;
   try {
     await fbDelete('employees', id);
-    DATA.employees = await fbGetAll('employees');
+    DATA.employees = DATA.employees.filter(e => e.id !== id);
+    delete CACHE_TS['employees'];
     toast('Empleado eliminado');
     renderEmployeeTable();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
@@ -1776,7 +1867,9 @@ async function saveCenter(existingId) {
   };
   try {
     await fbSet('centers', id, data);
-    DATA.centers = await fbGetAll('centers');
+    const idx = DATA.centers.findIndex(c => c.id === id);
+    if (idx >= 0) DATA.centers[idx] = data; else DATA.centers.push(data);
+    delete CACHE_TS['centers'];
     hide('modalEdit'); toast('Centro guardado');
     renderCenterTable();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
@@ -1786,7 +1879,8 @@ async function removeCenter(id) {
   if (!confirm('¿Eliminar este centro?')) return;
   try {
     await fbDelete('centers', id);
-    DATA.centers = await fbGetAll('centers');
+    DATA.centers = DATA.centers.filter(c => c.id !== id);
+    delete CACHE_TS['centers'];
     toast('Centro eliminado'); renderCenterTable();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
@@ -1824,9 +1918,12 @@ async function saveContractor(existingId) {
   const name = $('fConName').value.trim();
   if (!name) { toast('Nombre requerido', 'error'); return; }
   const id = existingId || `con_${Date.now()}`;
+  const obj = { id, name };
   try {
-    await fbSet('contractors', id, { id, name });
-    DATA.contractors = await fbGetAll('contractors');
+    await fbSet('contractors', id, obj);
+    const idx = DATA.contractors.findIndex(c => c.id === id);
+    if (idx >= 0) DATA.contractors[idx] = obj; else DATA.contractors.push(obj);
+    delete CACHE_TS['contractors'];
     hide('modalEdit'); toast('Contrata guardada');
     renderContractorTable();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
@@ -1836,7 +1933,8 @@ async function removeContractor(id) {
   if (!confirm('¿Eliminar esta contrata?')) return;
   try {
     await fbDelete('contractors', id);
-    DATA.contractors = await fbGetAll('contractors');
+    DATA.contractors = DATA.contractors.filter(c => c.id !== id);
+    delete CACHE_TS['contractors'];
     toast('Contrata eliminada'); renderContractorTable();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
