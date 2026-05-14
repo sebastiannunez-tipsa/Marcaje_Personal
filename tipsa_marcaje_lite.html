@@ -424,6 +424,7 @@ tr.active-row td { background: #ecfdf5; }
   <div class="nav-tabs mb-6" id="adminTabs">
     <button class="nav-tab active" onclick="setAdminTab('dashboard')">Dashboard</button>
     <button class="nav-tab" onclick="setAdminTab('reports')">Informes</button>
+    <button class="nav-tab" onclick="setAdminTab('kpis')">KPIs RRHH</button>
     <button class="nav-tab" onclick="setAdminTab('employees')">Empleados</button>
     <button class="nav-tab" onclick="setAdminTab('centers')">Centros</button>
     <button class="nav-tab" onclick="setAdminTab('contractors')">Contratas</button>
@@ -431,7 +432,24 @@ tr.active-row td { background: #ecfdf5; }
 
   <!-- DASHBOARD -->
   <div id="tabDashboard">
+    <div class="card mb-4">
+      <div class="flex gap-3" style="flex-wrap:wrap;align-items:end">
+        <div style="flex:1;min-width:120px">
+          <label class="label">Desde</label>
+          <input type="date" class="input" id="dashDateFrom" onchange="loadDashboard()">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label class="label">Hasta</label>
+          <input type="date" class="input" id="dashDateTo" onchange="loadDashboard()">
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label class="label">Centro</label>
+          <select class="select" id="dashCenter" onchange="loadDashboard()"><option value="">Todos</option></select>
+        </div>
+      </div>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px" class="mb-6">
+      <div class="stat-card"><div class="stat-label">Activos Ahora</div><div class="stat-value" id="statActive" style="color:var(--success)">0</div></div>
       <div class="stat-card"><div class="stat-label">Empleados Hoy</div><div class="stat-value" id="statEmployees">0</div></div>
       <div class="stat-card"><div class="stat-label">Total Horas</div><div class="stat-value" id="statHours">0h</div></div>
       <div class="stat-card"><div class="stat-label">H. Extras</div><div class="stat-value text-success" id="statExtra">+0h</div></div>
@@ -444,18 +462,19 @@ tr.active-row td { background: #ecfdf5; }
         </div>
       </div>
     </div>
+    <!-- Chart: Horas por Centro -->
+    <div class="card mb-4">
+      <h3 class="font-black uppercase tracking text-xs text-muted mb-3">Horas por Centro</h3>
+      <canvas id="chartCenters" height="180"></canvas>
+    </div>
     <div class="card">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="font-black uppercase tracking text-sm">Registros del Día</h3>
-        <div class="flex gap-2">
-          <input type="date" class="input" id="dashDateFrom" style="width:auto" onchange="loadDashboard()">
-          <input type="date" class="input" id="dashDateTo" style="width:auto" onchange="loadDashboard()">
-        </div>
+        <h3 class="font-black uppercase tracking text-sm">🟢 Empleados Activos (sin salida)</h3>
       </div>
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Estado</th><th>Empleado</th><th>Centro</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Editar</th>
+            <th>Empleado</th><th>Centro</th><th>Contrata</th><th>Entrada</th><th>Tiempo</th><th>Acciones</th>
           </tr></thead>
           <tbody id="dashTableBody"></tbody>
         </table>
@@ -495,12 +514,57 @@ tr.active-row td { background: #ecfdf5; }
           <button class="btn btn-outline text-xs" onclick="exportPDF()" style="border-color:#DC2626;color:#DC2626" title="Exportar PDF">📕 PDF</button>
         </div>
       </div>
-      <div class="table-wrap">
-        <table>
+      <div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <table style="min-width:900px">
           <thead><tr>
-            <th>Fecha</th><th>Empleado</th><th>Contrata</th><th>Centro</th><th>Turno</th><th>Jornada</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Extras</th><th>Menos</th>
+            <th>Fecha</th><th>Empleado</th><th>Contrata</th><th>Centro</th><th>Turno</th><th>Jorn.</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Extras</th><th>Menos</th><th>Acciones</th>
           </tr></thead>
           <tbody id="rptTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIs RRHH -->
+  <div id="tabKpis" class="hidden">
+    <div class="card mb-4">
+      <div class="flex gap-3" style="flex-wrap:wrap;align-items:end">
+        <div style="flex:1;min-width:120px">
+          <label class="label">Desde</label>
+          <input type="date" class="input" id="kpiDateFrom">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label class="label">Hasta</label>
+          <input type="date" class="input" id="kpiDateTo">
+        </div>
+        <button class="btn btn-primary" onclick="loadKPIs()">Calcular</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px" class="mb-6">
+      <div class="stat-card"><div class="stat-label">Empleados Activos</div><div class="stat-value" id="kpiActiveEmps">0</div></div>
+      <div class="stat-card"><div class="stat-label">Tasa Asistencia</div><div class="stat-value" id="kpiAttendance">0%</div></div>
+      <div class="stat-card"><div class="stat-label">Media Horas/Día</div><div class="stat-value" id="kpiAvgHours">0h</div></div>
+      <div class="stat-card"><div class="stat-label">Tasa Puntualidad</div><div class="stat-value" id="kpiPunctuality">0%</div></div>
+      <div class="stat-card"><div class="stat-label">Total H. Extras</div><div class="stat-value text-success" id="kpiTotalExtra">0h</div></div>
+      <div class="stat-card"><div class="stat-label">Total H. Menos</div><div class="stat-value text-danger" id="kpiTotalLess">0h</div></div>
+    </div>
+    <!-- Chart: Horas por empleado -->
+    <div class="card mb-4">
+      <h3 class="font-black uppercase tracking text-xs text-muted mb-3">Horas Trabajadas por Empleado (Top 15)</h3>
+      <canvas id="chartKpiEmps" height="220"></canvas>
+    </div>
+    <!-- Chart: Horas diarias -->
+    <div class="card mb-4">
+      <h3 class="font-black uppercase tracking text-xs text-muted mb-3">Evolución Horas Diarias</h3>
+      <canvas id="chartKpiDaily" height="180"></canvas>
+    </div>
+    <!-- Table: detalle por contrata -->
+    <div class="card">
+      <h3 class="font-black uppercase tracking text-xs text-muted mb-3">Resumen por Contrata</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Contrata</th><th>Empleados</th><th>Registros</th><th>Total Horas</th><th>Extras</th><th>Menos</th><th>Media H/Emp</th></tr></thead>
+          <tbody id="kpiContractorBody"></tbody>
         </table>
       </div>
     </div>
@@ -564,6 +628,7 @@ tr.active-row td { background: #ecfdf5; }
 <!-- ════════════════════ TOAST ════════════════════ -->
 <div id="toast" class="toast hidden"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.3/jspdf.plugin.autotable.min.js"></script>
@@ -1214,6 +1279,13 @@ function showAdminView() {
   $('dashDateTo').value = today;
   $('rptDateFrom').value = monthStart;
   $('rptDateTo').value = today;
+  $('kpiDateFrom').value = monthStart;
+  $('kpiDateTo').value = today;
+  
+  // Populate dashboard center filter
+  const dc = $('dashCenter');
+  dc.innerHTML = '<option value="">Todos</option>';
+  DATA.centers.forEach(c => dc.innerHTML += `<option value="${c.id}">${c.name}</option>`);
   
   // Populate report filters
   const rc = $('rptCenter');
@@ -1227,17 +1299,18 @@ function showAdminView() {
 }
 
 function setAdminTab(tab) {
-  ['dashboard','reports','employees','centers','contractors'].forEach(t => {
+  ['dashboard','reports','kpis','employees','centers','contractors'].forEach(t => {
     const el = $('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (el) el.classList.toggle('hidden', t !== tab);
   });
   document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
   const btns = $('adminTabs').querySelectorAll('.nav-tab');
-  const idx = ['dashboard','reports','employees','centers','contractors'].indexOf(tab);
+  const idx = ['dashboard','reports','kpis','employees','centers','contractors'].indexOf(tab);
   if (btns[idx]) btns[idx].classList.add('active');
   
   if (tab === 'dashboard') loadDashboard();
   if (tab === 'reports') loadReports();
+  if (tab === 'kpis') loadKPIs();
   if (tab === 'employees') renderEmployeeTable();
   if (tab === 'centers') renderCenterTable();
   if (tab === 'contractors') renderContractorTable();
@@ -1259,9 +1332,12 @@ function updateQuotaUI() {
 
 // ── Dashboard ──
 let DASH_RECORDS = [];
+let chartCentersInstance = null;
+
 async function loadDashboard() {
   const from = $('dashDateFrom').value;
   const to = $('dashDateTo').value;
+  const centerId = $('dashCenter').value;
   
   DASH_RECORDS = await fbQuery({
     from: [{ collectionId: 'attendance' }],
@@ -1272,11 +1348,18 @@ async function loadDashboard() {
     orderBy: [{ field: { fieldPath: 'checkIn' }, direction: 'ASCENDING' }]
   });
   
-  // Stats
+  // Filter by center
+  let filtered = DASH_RECORDS;
+  if (centerId) filtered = filtered.filter(r => r.centerId === centerId);
+  
+  // Stats from ALL records (active + completed)
   let totalH = 0, extraH = 0, lessH = 0;
   const empSet = new Set();
-  DASH_RECORDS.forEach(r => {
+  const activeRecords = [];
+  
+  filtered.forEach(r => {
     empSet.add(r.employeeId);
+    if (r.status === 'active') activeRecords.push(r);
     if (r.checkOut) {
       const h = hoursWorked(r.checkIn, r.checkOut);
       totalH += h;
@@ -1287,43 +1370,69 @@ async function loadDashboard() {
     }
   });
   
+  $('statActive').textContent = activeRecords.length;
   $('statEmployees').textContent = empSet.size;
   $('statHours').textContent = totalH.toFixed(1) + 'h';
   $('statExtra').textContent = '+' + extraH.toFixed(1) + 'h';
   $('statLess').textContent = '-' + lessH.toFixed(1) + 'h';
-  
-  // Quota indicator
   updateQuotaUI();
   
-  // Table
+  // ── Chart: Horas por Centro ──
+  const centerHours = {};
+  filtered.forEach(r => {
+    if (!r.checkOut) return;
+    const cn = DATA.centers.find(c => c.id === r.centerId)?.name || 'Otro';
+    centerHours[cn] = (centerHours[cn] || 0) + hoursWorked(r.checkIn, r.checkOut);
+  });
+  
+  if (typeof Chart !== 'undefined') {
+    const ctx = $('chartCenters');
+    if (chartCentersInstance) chartCentersInstance.destroy();
+    const labels = Object.keys(centerHours);
+    const values = Object.values(centerHours).map(v => parseFloat(v.toFixed(1)));
+    const colors = ['#004A99','#059669','#D97706','#DC2626','#7C3AED','#0891B2','#BE185D','#65A30D'];
+    chartCentersInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ label: 'Horas', data: values, backgroundColor: labels.map((_,i) => colors[i % colors.length]), borderRadius: 6 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, title: { display: true, text: 'Horas' } } }
+      }
+    });
+  }
+  
+  // ── Table: Only ACTIVE (no checkout) ──
   const tbody = $('dashTableBody');
   tbody.innerHTML = '';
   
-  // Sort: active first, then by checkIn
-  const sorted = [...DASH_RECORDS].sort((a, b) => {
-    if (a.status === 'active' && b.status !== 'active') return -1;
-    if (a.status !== 'active' && b.status === 'active') return 1;
-    return new Date(b.checkIn) - new Date(a.checkIn);
-  });
+  activeRecords.sort((a, b) => new Date(a.checkIn) - new Date(b.checkIn));
   
-  sorted.forEach(r => {
+  const now = new Date();
+  activeRecords.forEach(r => {
     const center = DATA.centers.find(c => c.id === r.centerId);
-    const h = r.checkOut ? hoursWorked(r.checkIn, r.checkOut).toFixed(1) + 'h' : '-';
-    const isActive = r.status === 'active';
+    const emp = DATA.employees.find(e => e.id === r.employeeId);
+    const contractor = DATA.contractors.find(ct => ct.id === emp?.contractorId);
     const displayName = r.backupRealName ? `${r.employeeName} (${r.backupRealName})` : r.employeeName;
-    tbody.innerHTML += `<tr class="${isActive ? 'active-row' : ''}">
-      <td><span class="badge ${isActive ? 'badge-active' : 'badge-completed'}">${isActive ? '● Activo' : 'Cerrado'}</span></td>
-      <td>${displayName}</td>
+    const elapsed = ((now - new Date(r.checkIn)) / 3600000).toFixed(1);
+    tbody.innerHTML += `<tr class="active-row">
+      <td class="font-black">${displayName}</td>
       <td>${center?.name || '-'}</td>
+      <td>${contractor?.name || '-'}</td>
       <td>${fmtTime(r.checkIn)}</td>
-      <td>${r.checkOut ? fmtTime(r.checkOut) : '-'}</td>
-      <td>${h}</td>
-      <td><button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editRecord('${r.id}')">✏️</button></td>
+      <td><span class="badge badge-active">${elapsed}h</span></td>
+      <td>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editRecord('${r.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="deleteRecord('${r.id}')">🗑</button>
+      </td>
     </tr>`;
   });
   
-  if (sorted.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted" style="padding:40px">Sin registros en este período</td></tr>';
+  if (activeRecords.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted" style="padding:40px">No hay empleados activos ahora</td></tr>';
   }
 }
 
@@ -1372,7 +1481,9 @@ async function saveEditRecord(id) {
     await fbUpdate('attendance', id, update);
     hide('modalEdit');
     toast('Registro actualizado');
-    loadDashboard();
+    // Reload whichever tab is visible
+    if (!$('tabDashboard').classList.contains('hidden')) loadDashboard();
+    if (!$('tabReports').classList.contains('hidden')) loadReports();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
@@ -1382,7 +1493,8 @@ async function deleteRecord(id) {
     await fbDelete('attendance', id);
     hide('modalEdit');
     toast('Registro eliminado');
-    loadDashboard();
+    if (!$('tabDashboard').classList.contains('hidden')) loadDashboard();
+    if (!$('tabReports').classList.contains('hidden')) loadReports();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
@@ -1431,10 +1543,14 @@ async function loadReports() {
       <td>${h ? h.toFixed(1) + 'h' : '-'}</td>
       <td class="text-success">${diff > 0 ? '+' + diff.toFixed(1) + 'h' : ''}</td>
       <td class="text-danger">${diff < 0 ? diff.toFixed(1) + 'h' : ''}</td>
+      <td>
+        <button class="btn btn-outline" style="padding:3px 8px;font-size:10px" onclick="editRecord('${r.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:3px 8px;font-size:10px;color:var(--danger)" onclick="deleteRecordFromReports('${r.id}')">🗑</button>
+      </td>
     </tr>`;
   });
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted" style="padding:40px">Sin registros</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted" style="padding:40px">Sin registros</td></tr>';
   }
   
   RPT_RECORDS = filtered; // for export
@@ -1709,6 +1825,184 @@ function exportPDF() {
   doc.save(`informe_tipsa_${f.from}_${f.to}.pdf`);
   toast('PDF exportado');
   } catch (e) { console.error('Error generando PDF:', e); toast('Error generando PDF: ' + e.message, 'error'); }
+}
+
+async function deleteRecordFromReports(id) {
+  if (!confirm('¿Seguro que quieres borrar este registro?')) return;
+  try {
+    await fbDelete('attendance', id);
+    toast('Registro eliminado');
+    loadReports();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── KPIs RRHH ──
+let chartKpiEmpsInstance = null;
+let chartKpiDailyInstance = null;
+
+async function loadKPIs() {
+  const from = $('kpiDateFrom').value;
+  const to = $('kpiDateTo').value;
+  
+  const records = await fbQuery({
+    from: [{ collectionId: 'attendance' }],
+    where: { compositeFilter: { op: 'AND', filters: [
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${from}T00:00:00.000Z` } } },
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${to}T23:59:59.999Z` } } }
+    ]}},
+    orderBy: [{ field: { fieldPath: 'checkIn' }, direction: 'ASCENDING' }]
+  });
+  
+  // Active employees (not terminated)
+  const activeEmps = DATA.employees.filter(e => !e.terminationDate || new Date(e.terminationDate) >= new Date());
+  const totalActiveEmps = activeEmps.filter(e => e.role !== 'admin').length;
+  
+  // Days in range
+  const d1 = new Date(from), d2 = new Date(to);
+  const totalDays = Math.max(1, Math.ceil((d2 - d1) / 86400000) + 1);
+  // Working days (exclude weekends)
+  let workDays = 0;
+  for (let d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) workDays++;
+  }
+  workDays = Math.max(workDays, 1);
+  
+  // Compute per-employee stats
+  const empStats = {};
+  let totalH = 0, totalExtra = 0, totalLess = 0;
+  const empDays = {}; // unique days per employee
+  const dailyHours = {}; // date → total hours
+  const contractorStats = {};
+  
+  records.forEach(r => {
+    if (!r.checkOut) return;
+    const h = hoursWorked(r.checkIn, r.checkOut);
+    const emp = DATA.employees.find(e => e.id === r.employeeId);
+    const std = emp?.standardHours || 8;
+    const diff = h - std;
+    
+    totalH += h;
+    if (diff > 0) totalExtra += diff; else totalLess += Math.abs(diff);
+    
+    // Per employee
+    if (!empStats[r.employeeId]) empStats[r.employeeId] = { name: r.employeeName, hours: 0, records: 0, extras: 0, less: 0, late: 0 };
+    empStats[r.employeeId].hours += h;
+    empStats[r.employeeId].records++;
+    if (diff > 0) empStats[r.employeeId].extras += diff;
+    if (diff < 0) empStats[r.employeeId].less += Math.abs(diff);
+    
+    // Track unique days worked
+    const dayKey = fmtDate(r.checkIn);
+    if (!empDays[r.employeeId]) empDays[r.employeeId] = new Set();
+    empDays[r.employeeId].add(dayKey);
+    
+    // Daily hours
+    if (!dailyHours[dayKey]) dailyHours[dayKey] = 0;
+    dailyHours[dayKey] += h;
+    
+    // Contractor stats
+    const conId = emp?.contractorId || '_internal';
+    const conName = DATA.contractors.find(c => c.id === conId)?.name || 'Internos';
+    if (!contractorStats[conId]) contractorStats[conId] = { name: conName, emps: new Set(), records: 0, hours: 0, extras: 0, less: 0 };
+    contractorStats[conId].emps.add(r.employeeId);
+    contractorStats[conId].records++;
+    contractorStats[conId].hours += h;
+    if (diff > 0) contractorStats[conId].extras += diff;
+    if (diff < 0) contractorStats[conId].less += Math.abs(diff);
+  });
+  
+  // Attendance rate: (unique employee-days worked) / (active employees × working days)
+  const totalEmpDays = Object.values(empDays).reduce((s, set) => s + set.size, 0);
+  const attendanceRate = totalActiveEmps > 0 ? Math.min(100, (totalEmpDays / (totalActiveEmps * workDays)) * 100) : 0;
+  
+  // Average hours per day
+  const avgHoursPerDay = Object.keys(dailyHours).length > 0 ? totalH / Object.keys(dailyHours).length : 0;
+  
+  // Punctuality: % records where hours >= standard (within tolerance)
+  let punctualCount = 0;
+  records.forEach(r => {
+    if (!r.checkOut) return;
+    const h = hoursWorked(r.checkIn, r.checkOut);
+    const emp = DATA.employees.find(e => e.id === r.employeeId);
+    const std = emp?.standardHours || 8;
+    if (h >= std - 0.25) punctualCount++;
+  });
+  const completedRecords = records.filter(r => r.checkOut).length;
+  const punctuality = completedRecords > 0 ? (punctualCount / completedRecords) * 100 : 0;
+  
+  // Display KPIs
+  $('kpiActiveEmps').textContent = totalActiveEmps;
+  $('kpiAttendance').textContent = attendanceRate.toFixed(0) + '%';
+  $('kpiAttendance').style.color = attendanceRate >= 80 ? 'var(--success)' : attendanceRate >= 60 ? 'var(--warn)' : 'var(--danger)';
+  $('kpiAvgHours').textContent = avgHoursPerDay.toFixed(1) + 'h';
+  $('kpiPunctuality').textContent = punctuality.toFixed(0) + '%';
+  $('kpiPunctuality').style.color = punctuality >= 85 ? 'var(--success)' : punctuality >= 70 ? 'var(--warn)' : 'var(--danger)';
+  $('kpiTotalExtra').textContent = totalExtra.toFixed(1) + 'h';
+  $('kpiTotalLess').textContent = totalLess.toFixed(1) + 'h';
+  
+  // ── Chart: Horas por Empleado (top 15) ──
+  if (typeof Chart !== 'undefined') {
+    const sortedEmps = Object.values(empStats).sort((a, b) => b.hours - a.hours).slice(0, 15);
+    const ctx1 = $('chartKpiEmps');
+    if (chartKpiEmpsInstance) chartKpiEmpsInstance.destroy();
+    chartKpiEmpsInstance = new Chart(ctx1, {
+      type: 'bar',
+      data: {
+        labels: sortedEmps.map(e => e.name.length > 18 ? e.name.slice(0, 16) + '…' : e.name),
+        datasets: [
+          { label: 'Horas', data: sortedEmps.map(e => parseFloat(e.hours.toFixed(1))), backgroundColor: '#004A99', borderRadius: 4 },
+          { label: 'Extras', data: sortedEmps.map(e => parseFloat(e.extras.toFixed(1))), backgroundColor: '#059669', borderRadius: 4 },
+          { label: 'Menos', data: sortedEmps.map(e => parseFloat(e.less.toFixed(1))), backgroundColor: '#DC2626', borderRadius: 4 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 10, weight: 'bold' } } } },
+        scales: { x: { beginAtZero: true, stacked: false } }
+      }
+    });
+    
+    // ── Chart: Evolución diaria ──
+    const dailyKeys = Object.keys(dailyHours).sort();
+    const ctx2 = $('chartKpiDaily');
+    if (chartKpiDailyInstance) chartKpiDailyInstance.destroy();
+    chartKpiDailyInstance = new Chart(ctx2, {
+      type: 'line',
+      data: {
+        labels: dailyKeys,
+        datasets: [{
+          label: 'Horas/Día',
+          data: dailyKeys.map(k => parseFloat(dailyHours[k].toFixed(1))),
+          borderColor: '#004A99', backgroundColor: 'rgba(0,74,153,0.1)',
+          fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#004A99'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, title: { display: true, text: 'Horas' } } }
+      }
+    });
+  }
+  
+  // ── Table: Resumen por Contrata ──
+  const conBody = $('kpiContractorBody');
+  conBody.innerHTML = '';
+  Object.values(contractorStats).sort((a, b) => b.hours - a.hours).forEach(c => {
+    const avgPerEmp = c.emps.size > 0 ? (c.hours / c.emps.size).toFixed(1) : '0';
+    conBody.innerHTML += `<tr>
+      <td class="font-black">${c.name}</td>
+      <td>${c.emps.size}</td><td>${c.records}</td>
+      <td>${c.hours.toFixed(1)}h</td>
+      <td class="text-success">${c.extras.toFixed(1)}h</td>
+      <td class="text-danger">${c.less.toFixed(1)}h</td>
+      <td>${avgPerEmp}h</td>
+    </tr>`;
+  });
+  if (Object.keys(contractorStats).length === 0) {
+    conBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted" style="padding:30px">Sin datos</td></tr>';
+  }
 }
 
 // ── Employee Management ──
