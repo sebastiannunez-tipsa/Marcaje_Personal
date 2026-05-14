@@ -428,6 +428,7 @@ tr.active-row td { background: #ecfdf5; }
     <button class="nav-tab" onclick="setAdminTab('employees')">Empleados</button>
     <button class="nav-tab" onclick="setAdminTab('centers')">Centros</button>
     <button class="nav-tab" onclick="setAdminTab('contractors')">Contratas</button>
+    <button class="nav-tab" onclick="setAdminTab('roles')">Roles</button>
   </div>
 
   <!-- DASHBOARD -->
@@ -620,6 +621,23 @@ tr.active-row td { background: #ecfdf5; }
         <table>
           <thead><tr><th>Nombre</th><th>Empleados</th><th>Acciones</th></tr></thead>
           <tbody id="conTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROLES -->
+  <div id="tabRoles" class="hidden">
+    <div class="card">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-black uppercase tracking text-sm">Roles</h3>
+        <button class="btn btn-primary text-xs" onclick="showRoleForm()">+ Nuevo</button>
+      </div>
+      <p class="text-muted text-xs mb-4">Los roles personalizados permiten asignar permisos de administrador a empleados.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nombre</th><th>Es Admin</th><th>Empleados</th><th>Acciones</th></tr></thead>
+          <tbody id="roleTableBody"></tbody>
         </table>
       </div>
     </div>
@@ -1283,7 +1301,7 @@ function showAdminView() {
   const monthStart = today.slice(0, 8) + '01';
   $('dashDateFrom').value = today;
   $('dashDateTo').value = today;
-  $('rptDateFrom').value = monthStart;
+  $('rptDateFrom').value = today;
   $('rptDateTo').value = today;
   $('kpiDateFrom').value = monthStart;
   $('kpiDateTo').value = today;
@@ -1305,13 +1323,13 @@ function showAdminView() {
 }
 
 function setAdminTab(tab) {
-  ['dashboard','reports','kpis','employees','centers','contractors'].forEach(t => {
+  ['dashboard','reports','kpis','employees','centers','contractors','roles'].forEach(t => {
     const el = $('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (el) el.classList.toggle('hidden', t !== tab);
   });
   document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
   const btns = $('adminTabs').querySelectorAll('.nav-tab');
-  const idx = ['dashboard','reports','kpis','employees','centers','contractors'].indexOf(tab);
+  const idx = ['dashboard','reports','kpis','employees','centers','contractors','roles'].indexOf(tab);
   if (btns[idx]) btns[idx].classList.add('active');
   
   if (tab === 'dashboard') loadDashboard();
@@ -1320,6 +1338,7 @@ function setAdminTab(tab) {
   if (tab === 'employees') renderEmployeeTable();
   if (tab === 'centers') renderCenterTable();
   if (tab === 'contractors') renderContractorTable();
+  if (tab === 'roles') renderRoleTable();
 }
 
 // ── Quota UI ──
@@ -2060,7 +2079,8 @@ function showEmployeeForm(empId) {
         ${DATA.contractors.map(c => `<option value="${c.id}" ${emp?.contractorId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
       </select></div>
       <div><label class="label">Rol</label><select class="select" id="fEmpRole">
-        <option value="">Sin rol</option>
+        <option value="">Empleado (sin rol)</option>
+        <option value="__admin__" ${emp?.role === 'admin' && !emp?.roleId ? 'selected' : ''}>⭐ Administrador (sistema)</option>
         ${DATA.roles.map(r => `<option value="${r.id}" ${emp?.roleId === r.id ? 'selected' : ''}>${r.name}${r.isAdmin ? ' (Admin)' : ''}</option>`).join('')}
       </select></div>
       <div><label class="label">Turno</label><input class="input" id="fEmpShift" value="${emp?.shift || ''}"></div>
@@ -2089,14 +2109,16 @@ async function saveEmployee(existingId) {
   
   const centerChecks = document.querySelectorAll('#fEmpCenters input[type=checkbox]:checked');
   const centerIds = Array.from(centerChecks).map(c => c.value);
-  const role = $('fEmpRole').value ? DATA.roles.find(r => r.id === $('fEmpRole').value) : null;
+  const roleVal = $('fEmpRole').value;
+  const isSystemAdmin = roleVal === '__admin__';
+  const customRole = (!isSystemAdmin && roleVal) ? DATA.roles.find(r => r.id === roleVal) : null;
   
   const id = existingId || `emp_${Date.now()}`;
   const emp = {
     id, name, dni,
     contractorId: $('fEmpContractor').value || null,
-    roleId: $('fEmpRole').value || null,
-    role: role?.isAdmin ? 'admin' : 'employee',
+    roleId: isSystemAdmin ? null : (roleVal || null),
+    role: isSystemAdmin || customRole?.isAdmin ? 'admin' : 'employee',
     shift: $('fEmpShift').value || '',
     area: $('fEmpArea').value || '',
     standardHours: parseInt($('fEmpHours').value) || 8,
@@ -2246,6 +2268,76 @@ async function removeContractor(id) {
     DATA.contractors = DATA.contractors.filter(c => c.id !== id);
     delete CACHE_TS['contractors'];
     toast('Contrata eliminada'); renderContractorTable();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── Role Management ──
+function renderRoleTable() {
+  const tbody = $('roleTableBody');
+  tbody.innerHTML = '';
+  DATA.roles.forEach(r => {
+    const empCount = DATA.employees.filter(e => e.roleId === r.id).length;
+    tbody.innerHTML += `<tr>
+      <td class="font-black">${r.name}</td>
+      <td>${r.isAdmin ? '<span class="badge badge-active">Sí</span>' : '<span class="badge badge-completed">No</span>'}</td>
+      <td>${empCount}</td>
+      <td>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editRole('${r.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="removeRole('${r.id}')">🗑</button>
+      </td>
+    </tr>`;
+  });
+  if (DATA.roles.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted" style="padding:30px">No hay roles definidos</td></tr>';
+  }
+}
+
+function showRoleForm(rId) {
+  const r = rId ? DATA.roles.find(x => x.id === rId) : null;
+  $('modalEditContent').innerHTML = `
+    <h3 class="text-xl font-black mb-4">${r ? 'Editar' : 'Nuevo'} Rol</h3>
+    <div class="flex flex-col gap-3">
+      <div><label class="label">Nombre del Rol</label><input class="input" id="fRoleName" value="${r?.name || ''}"></div>
+      <div>
+        <label class="flex items-center gap-3" style="cursor:pointer">
+          <input type="checkbox" id="fRoleAdmin" ${r?.isAdmin ? 'checked' : ''} style="width:18px;height:18px">
+          <span class="font-bold text-sm">Tiene privilegios de administrador</span>
+        </label>
+      </div>
+    </div>
+    <div class="grid-2 mt-6">
+      <button class="btn btn-outline btn-block" onclick="closeModal('modalEdit')">Cancelar</button>
+      <button class="btn btn-primary btn-block" onclick="saveRole('${r?.id || ''}')">Guardar</button>
+    </div>`;
+  show('modalEdit');
+}
+function editRole(id) { showRoleForm(id); }
+
+async function saveRole(existingId) {
+  const name = $('fRoleName').value.trim();
+  if (!name) { toast('Nombre requerido', 'error'); return; }
+  const id = existingId || `role_${Date.now()}`;
+  const obj = { id, name, isAdmin: $('fRoleAdmin').checked };
+  try {
+    await fbSet('roles', id, obj);
+    const idx = DATA.roles.findIndex(r => r.id === id);
+    if (idx >= 0) DATA.roles[idx] = obj; else DATA.roles.push(obj);
+    delete CACHE_TS['roles'];
+    hide('modalEdit'); toast('Rol guardado');
+    renderRoleTable();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function removeRole(id) {
+  const r = DATA.roles.find(x => x.id === id);
+  const empCount = DATA.employees.filter(e => e.roleId === id).length;
+  if (empCount > 0 && !confirm(`Este rol está asignado a ${empCount} empleado(s). ¿Eliminar igualmente?`)) return;
+  if (empCount === 0 && !confirm(`¿Eliminar el rol "${r?.name}"?`)) return;
+  try {
+    await fbDelete('roles', id);
+    DATA.roles = DATA.roles.filter(x => x.id !== id);
+    delete CACHE_TS['roles'];
+    toast('Rol eliminado'); renderRoleTable();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
