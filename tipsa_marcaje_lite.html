@@ -1050,7 +1050,7 @@ function onEmployeeSelected() {
   hide('loginError');
 }
 
-function doLogin() {
+async function doLogin() {
   const empId = $('selEmployee').value;
   const emp = DATA.employees.find(e => e.id === empId);
   if (!emp) return;
@@ -1069,6 +1069,24 @@ function doLogin() {
   
   CURRENT_USER = emp;
   SELECTED_CENTER_ID = $('selCenter').value || null;
+  
+  // Link Firebase UID to employee + admins collection (required for Firestore security rules)
+  if (UID) {
+    try {
+      await fbUpdate('employees', emp.id, { firebaseUid: UID });
+    } catch (e) { console.warn('Link UID:', e); }
+    
+    // If admin, register in admins collection so isAdmin() rule works for writes
+    if (isAdmin) {
+      try {
+        await fbSet('admins', UID, {
+          uid: UID,
+          employeeId: emp.id,
+          linkedAt: new Date().toISOString()
+        });
+      } catch (e) { console.warn('Link admin:', e); }
+    }
+  }
   
   $('headerUser').innerHTML = `<span>${emp.name}</span><button class="btn btn-outline" style="padding:6px 12px;font-size:10px;color:#fff;border-color:rgba(255,255,255,.2)" onclick="doLogout()">Salir</button>`;
   
