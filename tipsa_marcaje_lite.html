@@ -480,14 +480,18 @@ tr.active-row td { background: #ecfdf5; }
       </div>
     </div>
     <div class="card">
-      <div class="flex justify-between items-center mb-4">
+      <div class="flex justify-between items-center mb-4" style="flex-wrap:wrap;gap:8px">
         <h3 class="font-black uppercase tracking text-sm">Resultados (<span id="rptCount">0</span>)</h3>
-        <button class="btn btn-outline text-xs" onclick="exportCSV()">⬇ Exportar CSV</button>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-outline text-xs" onclick="exportCSV()" title="Exportar CSV">📄 CSV</button>
+          <button class="btn btn-outline text-xs" onclick="exportExcel()" style="border-color:#217346;color:#217346" title="Exportar Excel">📊 Excel</button>
+          <button class="btn btn-outline text-xs" onclick="exportPDF()" style="border-color:#DC2626;color:#DC2626" title="Exportar PDF">📕 PDF</button>
+        </div>
       </div>
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Fecha</th><th>Empleado</th><th>Centro</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Extras</th><th>Menos</th>
+            <th>Fecha</th><th>Empleado</th><th>Contrata</th><th>Centro</th><th>Turno</th><th>Jornada</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Extras</th><th>Menos</th>
           </tr></thead>
           <tbody id="rptTableBody"></tbody>
         </table>
@@ -553,6 +557,9 @@ tr.active-row td { background: #ecfdf5; }
 <!-- ════════════════════ TOAST ════════════════════ -->
 <div id="toast" class="toast hidden"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.3/jspdf.plugin.autotable.min.js"></script>
 <script>
 /* ══════════════════════════════════════════════════════
    TIPSA CONTROL HORARIO — LITE
@@ -1325,12 +1332,14 @@ async function loadReports() {
   filtered.forEach(r => {
     const emp = DATA.employees.find(e => e.id === r.employeeId);
     const center = DATA.centers.find(c => c.id === r.centerId);
+    const contractor = DATA.contractors.find(ct => ct.id === emp?.contractorId);
     const h = r.checkOut ? hoursWorked(r.checkIn, r.checkOut) : 0;
     const std = emp?.standardHours || 8;
     const diff = h - std;
     const displayName = r.backupRealName ? `${r.employeeName} (${r.backupRealName})` : r.employeeName;
     tbody.innerHTML += `<tr>
-      <td>${fmtDate(r.checkIn)}</td><td>${displayName}</td><td>${center?.name || '-'}</td>
+      <td>${fmtDate(r.checkIn)}</td><td>${displayName}</td><td>${contractor?.name || '-'}</td><td>${center?.name || '-'}</td>
+      <td>${emp?.shift || '-'}</td><td>${std}h</td>
       <td>${fmtTime(r.checkIn)}</td><td>${r.checkOut ? fmtTime(r.checkOut) : 'En curso'}</td>
       <td>${h ? h.toFixed(1) + 'h' : '-'}</td>
       <td class="text-success">${diff > 0 ? '+' + diff.toFixed(1) + 'h' : ''}</td>
@@ -1338,16 +1347,15 @@ async function loadReports() {
     </tr>`;
   });
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted" style="padding:40px">Sin registros</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted" style="padding:40px">Sin registros</td></tr>';
   }
   
   RPT_RECORDS = filtered; // for export
 }
 
-function exportCSV() {
-  if (RPT_RECORDS.length === 0) { toast('No hay datos para exportar', 'error'); return; }
-  let csv = 'Fecha,Empleado,Centro,Contrata,Entrada,Salida,Horas,Extras,Menos\n';
-  RPT_RECORDS.forEach(r => {
+// ── Helper: build export data array from RPT_RECORDS ──
+function buildExportData() {
+  return RPT_RECORDS.map(r => {
     const emp = DATA.employees.find(e => e.id === r.employeeId);
     const center = DATA.centers.find(c => c.id === r.centerId);
     const contractor = DATA.contractors.find(ct => ct.id === emp?.contractorId);
@@ -1355,13 +1363,261 @@ function exportCSV() {
     const std = emp?.standardHours || 8;
     const diff = h - std;
     const displayName = r.backupRealName ? `${r.employeeName} (${r.backupRealName})` : r.employeeName;
-    csv += `${fmtDate(r.checkIn)},"${displayName}","${center?.name || ''}","${contractor?.name || ''}",${fmtTime(r.checkIn)},${r.checkOut ? fmtTime(r.checkOut) : 'En curso'},${h.toFixed(1)},${diff > 0 ? '+'+diff.toFixed(1) : ''},${diff < 0 ? diff.toFixed(1) : ''}\n`;
+    return {
+      fecha: fmtDate(r.checkIn),
+      empleado: displayName,
+      contrata: contractor?.name || '-',
+      centro: center?.name || '-',
+      turno: emp?.shift || '-',
+      jornada: std,
+      entrada: fmtTime(r.checkIn),
+      salida: r.checkOut ? fmtTime(r.checkOut) : 'En curso',
+      horas: h ? parseFloat(h.toFixed(1)) : 0,
+      extras: diff > 0 ? parseFloat(diff.toFixed(1)) : 0,
+      menos: diff < 0 ? parseFloat(Math.abs(diff).toFixed(1)) : 0
+    };
+  });
+}
+
+function getFilterLabels() {
+  const centerName = $('rptCenter').value ? DATA.centers.find(c => c.id === $('rptCenter').value)?.name : 'TODOS';
+  const contractorName = $('rptContractor').value ? DATA.contractors.find(c => c.id === $('rptContractor').value)?.name : 'TODAS';
+  return { centerName, contractorName, from: $('rptDateFrom').value, to: $('rptDateTo').value };
+}
+
+// ── Export CSV ──
+function exportCSV() {
+  if (RPT_RECORDS.length === 0) { toast('No hay datos para exportar', 'error'); return; }
+  const rows = buildExportData();
+  let csv = 'Fecha;Empleado;Contrata;Centro;Turno;Jornada;Entrada;Salida;Horas;Extras;Menos\n';
+  rows.forEach(r => {
+    csv += `${r.fecha};"${r.empleado}";"${r.contrata}";"${r.centro}";"${r.turno}";${r.jornada};${r.entrada};${r.salida};${r.horas};${r.extras};${r.menos}\n`;
   });
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `informe_tipsa_${$('rptDateFrom').value}_${$('rptDateTo').value}.csv`;
+  const f = getFilterLabels();
+  a.download = `informe_tipsa_${f.from}_${f.to}.csv`;
   a.click();
   toast('CSV exportado');
+}
+
+// ── Export Excel ──
+function exportExcel() {
+  if (RPT_RECORDS.length === 0) { toast('No hay datos para exportar', 'error'); return; }
+  const rows = buildExportData();
+  const f = getFilterLabels();
+  
+  // Build header rows
+  const headerRows = [
+    ['TIPSA — INFORME DE ASISTENCIA'],
+    [`Período: ${f.from} al ${f.to}`, '', `Centro: ${f.centerName}`, '', `Contrata: ${f.contractorName}`],
+    [`Generado: ${new Date().toLocaleString('es-ES')}`],
+    [] // empty row before data
+  ];
+  
+  // Column headers
+  const colHeaders = ['Fecha', 'Empleado', 'Contrata', 'Centro', 'Turno', 'Jornada', 'Entrada', 'Salida', 'Horas', 'Extras', 'Menos'];
+  
+  // Data rows
+  const dataRows = rows.map(r => [r.fecha, r.empleado, r.contrata, r.centro, r.turno, r.jornada, r.entrada, r.salida, r.horas, r.extras, r.menos]);
+  
+  // Summary
+  const totalH = rows.reduce((s, r) => s + r.horas, 0);
+  const totalExtra = rows.reduce((s, r) => s + r.extras, 0);
+  const totalMenos = rows.reduce((s, r) => s + r.menos, 0);
+  const uniqueEmps = new Set(rows.map(r => r.empleado)).size;
+  
+  const summaryRows = [
+    [],
+    ['RESUMEN', '', '', '', '', '', '', '', '', '', ''],
+    ['Total Registros', rows.length, '', 'Empleados Únicos', uniqueEmps, '', '', 'Total Horas', totalH.toFixed(1), totalExtra.toFixed(1), totalMenos.toFixed(1)]
+  ];
+  
+  const allRows = [...headerRows, colHeaders, ...dataRows, ...summaryRows];
+  
+  const ws = XLSX.utils.aoa_to_sheet(allRows);
+  
+  // Column widths
+  ws['!cols'] = [
+    { wch: 12 }, // Fecha
+    { wch: 28 }, // Empleado
+    { wch: 18 }, // Contrata
+    { wch: 22 }, // Centro
+    { wch: 14 }, // Turno
+    { wch: 9 },  // Jornada
+    { wch: 10 }, // Entrada
+    { wch: 10 }, // Salida
+    { wch: 8 },  // Horas
+    { wch: 8 },  // Extras
+    { wch: 8 }   // Menos
+  ];
+  
+  // Merge title row
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } } // Title across all cols
+  ];
+  
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Asistencias');
+  XLSX.writeFile(wb, `informe_tipsa_${f.from}_${f.to}.xlsx`);
+  toast('Excel exportado');
+}
+
+// ── Export PDF (vertical/portrait, paginated, repeating headers) ──
+function exportPDF() {
+  if (RPT_RECORDS.length === 0) { toast('No hay datos para exportar', 'error'); return; }
+  const rows = buildExportData();
+  const f = getFilterLabels();
+  
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  
+  // ── Header on first page ──
+  doc.setFillColor(0, 74, 153); // TIPSA Blue
+  doc.rect(0, 0, 210, 38, 'F');
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.text('TIPSA', 14, 16);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  doc.text('SISTEMA DE CONTROL HORARIO', 14, 24);
+  
+  doc.setFontSize(8);
+  doc.text(`INFORME DE ASISTENCIA: ${f.from} al ${f.to}`, 14, 31);
+  doc.text(`CENTRO: ${f.centerName}  |  CONTRATA: ${f.contractorName}`, 14, 36);
+  
+  // ── Summary stats ──
+  const totalH = rows.reduce((s, r) => s + r.horas, 0);
+  const totalExtra = rows.reduce((s, r) => s + r.extras, 0);
+  const totalMenos = rows.reduce((s, r) => s + r.menos, 0);
+  const uniqueEmps = new Set(rows.map(r => r.empleado)).size;
+  
+  const statsY = 44;
+  doc.setTextColor(0, 0, 0);
+  doc.setFillColor(245, 247, 250);
+  doc.roundedRect(14, statsY, 182, 14, 2, 2, 'F');
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(100, 116, 139);
+  doc.text('REGISTROS', 18, statsY + 5);
+  doc.text('EMPLEADOS', 55, statsY + 5);
+  doc.text('TOTAL HORAS', 92, statsY + 5);
+  doc.text('H. EXTRAS', 132, statsY + 5);
+  doc.text('H. MENOS', 166, statsY + 5);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(String(rows.length), 18, statsY + 11);
+  doc.text(String(uniqueEmps), 55, statsY + 11);
+  doc.text(totalH.toFixed(1) + 'h', 92, statsY + 11);
+  doc.setTextColor(5, 150, 105);
+  doc.text('+' + totalExtra.toFixed(1) + 'h', 132, statsY + 11);
+  doc.setTextColor(220, 38, 38);
+  doc.text('-' + totalMenos.toFixed(1) + 'h', 166, statsY + 11);
+  
+  // ── Table data ──
+  const tableData = rows.map(r => [
+    r.fecha,
+    r.empleado,
+    r.contrata,
+    r.centro,
+    r.turno,
+    r.jornada + 'h',
+    r.entrada,
+    r.salida,
+    r.horas.toFixed(1) + 'h',
+    r.extras > 0 ? '+' + r.extras.toFixed(1) : '',
+    r.menos > 0 ? '-' + r.menos.toFixed(1) : ''
+  ]);
+  
+  doc.autoTable({
+    head: [['Fecha', 'Empleado', 'Contrata', 'Centro', 'Turno', 'Jorn.', 'Entrada', 'Salida', 'Horas', 'Extras', 'Menos']],
+    body: tableData,
+    startY: statsY + 18,
+    theme: 'grid',
+    styles: {
+      font: 'helvetica',
+      fontSize: 6.5,
+      cellPadding: 2,
+      lineColor: [226, 232, 240],
+      lineWidth: 0.2,
+      textColor: [15, 23, 42],
+      valign: 'middle'
+    },
+    headStyles: {
+      fillColor: [0, 74, 153],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 6.5,
+      halign: 'center',
+      cellPadding: 3
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 16 },    // Fecha
+      1: { cellWidth: 30 },                       // Empleado
+      2: { cellWidth: 20 },                       // Contrata
+      3: { cellWidth: 24 },                       // Centro
+      4: { halign: 'center', cellWidth: 16 },     // Turno
+      5: { halign: 'center', cellWidth: 10 },     // Jornada
+      6: { halign: 'center', cellWidth: 14 },     // Entrada
+      7: { halign: 'center', cellWidth: 14 },     // Salida
+      8: { halign: 'center', cellWidth: 12, fontStyle: 'bold' },  // Horas
+      9: { halign: 'center', cellWidth: 12, textColor: [5, 150, 105], fontStyle: 'bold' },  // Extras
+      10: { halign: 'center', cellWidth: 12, textColor: [220, 38, 38], fontStyle: 'bold' }   // Menos
+    },
+    margin: { top: 14, right: 10, bottom: 18, left: 10 },
+    showHead: 'everyPage',  // ← Encabezados en CADA página
+    
+    // Header on every page (except first which has the big header)
+    didDrawPage: function(data) {
+      const pageNum = doc.internal.getNumberOfPages();
+      const currentPage = doc.internal.getCurrentPageInfo().pageNumber;
+      
+      // Mini header on pages 2+
+      if (currentPage > 1) {
+        doc.setFillColor(0, 74, 153);
+        doc.rect(0, 0, 210, 10, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`TIPSA — Informe Asistencia  |  ${f.from} al ${f.to}  |  Centro: ${f.centerName}  |  Contrata: ${f.contractorName}`, 10, 7);
+      }
+      
+      // Footer on every page
+      doc.setFontSize(7);
+      doc.setTextColor(150, 150, 150);
+      doc.setFont('helvetica', 'normal');
+      doc.text(
+        `Página ${currentPage} de ${pageNum}  —  Generado: ${new Date().toLocaleString('es-ES')}  —  TIPSA Control Horario`,
+        105, 290, { align: 'center' }
+      );
+    }
+  });
+  
+  // Fix page count (autoTable may not know total pages during didDrawPage)
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    // Redraw footer with correct total
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 286, 210, 12, 'F');
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      `Página ${i} de ${totalPages}  —  Generado: ${new Date().toLocaleString('es-ES')}  —  TIPSA Control Horario`,
+      105, 290, { align: 'center' }
+    );
+  }
+  
+  doc.save(`informe_tipsa_${f.from}_${f.to}.pdf`);
+  toast('PDF exportado');
 }
 
 // ── Employee Management ──
