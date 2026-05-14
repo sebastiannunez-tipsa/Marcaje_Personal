@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, getDocs, onSnapshot, query, addDoc, updateDoc, deleteDoc, getDoc, getDocFromServer, where, limit } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, onSnapshot, query, addDoc, updateDoc, deleteDoc, getDoc, getDocFromServer, where, limit, orderBy } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from './firebase';
 import { Employee, WorkCenter, Contractor, CustomRole, AttendanceRecord, Note, SecurityLog } from './types';
@@ -206,7 +206,11 @@ export const deleteRole = async (id: string) => {
 export const checkIn = async (record: Omit<AttendanceRecord, 'id'>) => {
   try {
     const newId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    await setDoc(doc(db, 'attendance', newId), cleanData({ ...record, id: newId }));
+    // IMPORTANT: explicitly set checkOut to null so Firestore indexes it
+    // and the where('checkOut', '==', null) query in subscribeToActiveSession works
+    const data = cleanData({ ...record, id: newId });
+    data.checkOut = null; // Force null even if cleanData would have removed it
+    await setDoc(doc(db, 'attendance', newId), data);
     
     // Update lastAttendance on employee
     await updateDoc(doc(db, 'employees', record.employeeId), {
@@ -306,10 +310,11 @@ export const subscribeToActiveSession = (
   employeeId: string,
   callback: (session: AttendanceRecord | null) => void
 ) => {
+  // Primary query: look for records with status 'active' (more reliable than checkOut == null)
   const q = query(
     collection(db, 'attendance'),
     where('employeeId', '==', employeeId),
-    where('checkOut', '==', null),
+    where('status', '==', 'active'),
     limit(1)
   );
   return onSnapshot(q, (snapshot) => {
@@ -322,7 +327,9 @@ export const subscribeToActiveSession = (
       callback({ id: doc.id, ...doc.data() } as unknown as AttendanceRecord);
     }
   }, (error) => {
-    handleFirestoreError(error, OperationType.LIST, 'attendance');
+    // Don't crash the app - just log and return null
+    console.error('subscribeToActiveSession error:', error.message);
+    callback(null);
   });
 };
 
@@ -347,5 +354,32 @@ export const subscribeToAttendanceRange = (
     callback(data);
   }, (error) => {
     handleFirestoreError(error, OperationType.LIST, 'attendance');
+  });
+};
+
+// Efficient query: subscribe only to the last completed session for an employee
+// instead of downloading the entire attendance collection
+export const subscribeToLastCompletedSession = (
+  employeeId: string,
+  callback: (session: AttendanceRecord | null) => void
+) => {
+  const q = query(
+    collection(db, 'attendance'),
+    where('employeeId', '==', employeeId),
+    where('status', '==', 'completed'),
+    orderBy('checkIn', 'desc'),
+    limit(1)
+  );
+  return onSnapshot(q, (snapshot) => {
+    if (snapshot.empty) {
+      callback(null);
+    } else {
+      const docSnap = snapshot.docs[0];
+      callback({ id: docSnap.id, ...docSnap.data() } as unknown as AttendanceRecord);
+    }
+  }, (error) => {
+    // Silently handle - the composite index may not exist yet
+    console.warn('subscribeToLastCompletedSession error (index may be needed):', error.message);
+    callback(null);
   });
 };

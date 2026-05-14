@@ -183,7 +183,7 @@ const parseExcelDate = (val: any) => {
   return String(val);
 };
 
-import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, updateAttendanceRecord, subscribeToActiveSession, subscribeToAttendanceRange, deleteEmployee, deleteCenter, deleteContractor, deleteRole, saveNote, deleteNote, hasBackupToday, deleteAttendanceRecord, saveSecurityLog } from './db';
+import { initDB, subscribeToCollection, saveEmployee, saveCenter, saveContractor, saveRole, checkIn, checkOut, updateAttendanceRecord, subscribeToActiveSession, subscribeToAttendanceRange, deleteEmployee, deleteCenter, deleteContractor, deleteRole, saveNote, deleteNote, hasBackupToday, deleteAttendanceRecord, saveSecurityLog, handleFirestoreError, OperationType, subscribeToLastCompletedSession } from './db';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
@@ -612,11 +612,15 @@ export default function App() {
     };
 
     const handleDataError = (err: any) => {
-      if (err?.message?.includes('Quota exceeded') || err?.message?.includes('quota metric')) {
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes('Quota exceeded') || errMsg.includes('quota metric') || errMsg.includes('billing instrument')) {
         setQuotaExceeded(true);
         setIsDataLoaded(true); // Stop loading indicator
       } else {
-        handleFirestoreError(err, OperationType.LIST, 'initial_load');
+        // Log the error but don't throw - that would crash the app during initial load
+        console.error('Firestore initial load error:', errMsg);
+        showError('Error al cargar datos. Comprueba tu conexión.');
+        setIsDataLoaded(true); // Allow the app to render even with partial data
       }
     };
 
@@ -1414,12 +1418,9 @@ function EmployeeView({ employee, centers, roles, contractors, initialCenterId, 
       }
     });
 
-    // Fetch last session to check 30min margin
-    const unsubLast = subscribeToCollection<AttendanceRecord>('attendance', (records) => {
-      const empRecords = records
-        .filter(r => r.employeeId === employee.id && r.status === 'completed')
-        .sort((a, b) => new Date(b.checkOut!).getTime() - new Date(a.checkOut!).getTime());
-      setLastSession(empRecords[0] || null);
+    // Fetch ONLY the last completed session for this employee (efficient query)
+    const unsubLast = subscribeToLastCompletedSession(employee.id, (session) => {
+      setLastSession(session);
     });
 
     return () => {
