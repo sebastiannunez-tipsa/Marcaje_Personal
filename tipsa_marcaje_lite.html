@@ -558,7 +558,7 @@ tr.active-row td { background: #ecfdf5; }
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.3/jspdf.plugin.autotable.min.js"></script>
 <script>
 /* ══════════════════════════════════════════════════════
@@ -1404,6 +1404,7 @@ function exportCSV() {
 // ── Export Excel ──
 function exportExcel() {
   if (RPT_RECORDS.length === 0) { toast('No hay datos para exportar', 'error'); return; }
+  if (typeof XLSX === 'undefined') { toast('Error: librería SheetJS no cargada. Comprueba tu conexión.', 'error'); return; }
   const rows = buildExportData();
   const f = getFilterLabels();
   
@@ -1466,9 +1467,11 @@ function exportExcel() {
 // ── Export PDF (vertical/portrait, paginated, repeating headers) ──
 function exportPDF() {
   if (RPT_RECORDS.length === 0) { toast('No hay datos para exportar', 'error'); return; }
+  if (!window.jspdf) { toast('Error: librería jsPDF no cargada. Comprueba tu conexión a internet.', 'error'); console.error('jsPDF not loaded. window.jspdf =', window.jspdf); return; }
   const rows = buildExportData();
   const f = getFilterLabels();
   
+  try {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   
@@ -1618,6 +1621,7 @@ function exportPDF() {
   
   doc.save(`informe_tipsa_${f.from}_${f.to}.pdf`);
   toast('PDF exportado');
+  } catch (e) { console.error('Error generando PDF:', e); toast('Error generando PDF: ' + e.message, 'error'); }
 }
 
 // ── Employee Management ──
