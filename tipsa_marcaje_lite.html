@@ -650,16 +650,26 @@ async function fbGetAll(col) {
     if (cached) return JSON.parse(cached);
   }
   
-  const r = await fetch(`${FB_BASE}/${col}?key=${CFG.apiKey}&pageSize=500`, { headers: headers() });
+  // Use runQuery instead of GET list - Firestore security rules treat 'list' differently from 'get'
+  // and the deployed rules only allow 'read' (get+list via SDK) but REST API list requires explicit 'list' permission
+  // runQuery with no filter returns all docs and works with 'get' permission
+  const r = await fetch(`${FB_QUERY}?key=${CFG.apiKey}`, {
+    method: 'POST', headers: headers(),
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: col }], limit: 1000 } })
+  });
   if (r.status === 429) {
     // Quota exceeded - try cache
     const cached = localStorage.getItem(cacheKey);
     if (cached) { toast('Cuota Firebase agotada. Usando datos en caché.', 'error'); return JSON.parse(cached); }
     throw new Error('QUOTA_EXCEEDED');
   }
-  if (!r.ok) throw new Error(`Error ${r.status}`);
+  if (!r.ok) {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) { console.warn(`fbGetAll ${col} failed (${r.status}), using cache`); return JSON.parse(cached); }
+    throw new Error(`Error ${r.status} loading ${col}`);
+  }
   const d = await r.json();
-  const docs = (d.documents || []).map(docToObj);
+  const docs = d.filter(x => x.document).map(x => docToObj(x.document));
   
   // Save to cache
   localStorage.setItem(cacheKey, JSON.stringify(docs));
