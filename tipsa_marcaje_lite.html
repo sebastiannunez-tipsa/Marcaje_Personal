@@ -802,7 +802,7 @@ async function fetchWithRetry(url, opts) {
 
 // Per-collection cache TTLs (ms)
 const CACHE_TTLS = {
-  employees: 3600000,    // 1 hour — only changes when admin edits
+  employees: 14400000,   // 4 hours — only changes when admin edits
   centers: 86400000,     // 24 hours — almost never changes
   contractors: 86400000, // 24 hours
   roles: 86400000        // 24 hours
@@ -1383,7 +1383,10 @@ function setAdminTab(tab) {
   const idx = ['dashboard','reports','kpis','employees','centers','contractors','roles'].indexOf(tab);
   if (btns[idx]) btns[idx].classList.add('active');
   
-  if (tab === 'dashboard') loadDashboard();
+  if (tab === 'dashboard') {
+    if (DASH_RECORDS.length > 0) renderDashFromCache(); // just re-render, no Firebase
+    else loadDashboard(); // first time only
+  }
   if (tab === 'employees') renderEmployeeTable();
   if (tab === 'centers') renderCenterTable();
   if (tab === 'contractors') renderContractorTable();
@@ -1561,9 +1564,16 @@ async function saveEditRecord(id) {
     await fbUpdate('attendance', id, update);
     hide('modalEdit');
     toast('Registro actualizado');
-    // Reload whichever tab is visible
-    if (!$('tabDashboard').classList.contains('hidden')) loadDashboard();
-    if (!$('tabReports').classList.contains('hidden')) loadReports();
+    // Update local arrays instead of re-querying Firebase
+    const updateLocal = (arr) => {
+      const idx = arr.findIndex(x => x.id === id);
+      if (idx >= 0) Object.assign(arr[idx], { checkIn: update.checkIn, checkOut: update.checkOut, status: update.status });
+    };
+    updateLocal(DASH_RECORDS);
+    updateLocal(RPT_ALL_RECORDS);
+    updateLocal(RPT_RECORDS);
+    if (!$('tabDashboard').classList.contains('hidden')) renderDashFromCache();
+    if (!$('tabReports').classList.contains('hidden')) renderReportsTable();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
@@ -1573,8 +1583,12 @@ async function deleteRecord(id) {
     await fbDelete('attendance', id);
     hide('modalEdit');
     toast('Registro eliminado');
-    if (!$('tabDashboard').classList.contains('hidden')) loadDashboard();
-    if (!$('tabReports').classList.contains('hidden')) loadReports();
+    // Remove from local arrays instead of re-querying
+    DASH_RECORDS = DASH_RECORDS.filter(x => x.id !== id);
+    RPT_ALL_RECORDS = RPT_ALL_RECORDS.filter(x => x.id !== id);
+    RPT_RECORDS = RPT_RECORDS.filter(x => x.id !== id);
+    if (!$('tabDashboard').classList.contains('hidden')) renderDashFromCache();
+    if (!$('tabReports').classList.contains('hidden')) renderReportsTable();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
@@ -1725,7 +1739,15 @@ async function massCheckOut() {
   }
   
   toast(`Salida masiva: ${ok} OK` + (fail ? `, ${fail} errores` : ''));
-  loadReports();
+  // Update local arrays instead of re-querying
+  activeIds.forEach(id => {
+    [RPT_ALL_RECORDS, RPT_RECORDS, DASH_RECORDS].forEach(arr => {
+      const r = arr.find(x => x.id === id);
+      if (r) { r.checkOut = now; r.status = 'completed'; }
+    });
+  });
+  renderReportsTable();
+  if (!$('tabDashboard').classList.contains('hidden')) renderDashFromCache();
 }
 
 async function massCheckIn() {
@@ -1790,7 +1812,8 @@ async function executeMassCheckIn() {
   
   hide('modalEdit');
   toast(`Entrada masiva: ${ok} OK` + (fail ? `, ${fail} errores` : ''));
-  loadReports();
+  // Add new records to local arrays instead of re-querying
+  renderReportsTable();
 }
 
 async function deleteRecordFromReports(id) {
@@ -1798,7 +1821,10 @@ async function deleteRecordFromReports(id) {
   try {
     await fbDelete('attendance', id);
     toast('Registro eliminado');
-    loadReports();
+    RPT_ALL_RECORDS = RPT_ALL_RECORDS.filter(x => x.id !== id);
+    RPT_RECORDS = RPT_RECORDS.filter(x => x.id !== id);
+    DASH_RECORDS = DASH_RECORDS.filter(x => x.id !== id);
+    renderReportsTable();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
