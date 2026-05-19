@@ -1366,10 +1366,7 @@ function setAdminTab(tab) {
   const idx = ['dashboard','reports','kpis','employees','centers','contractors','roles'].indexOf(tab);
   if (btns[idx]) btns[idx].classList.add('active');
   
-  // Dashboard: load on first open only, then use cached data
-  if (tab === 'dashboard' && DASH_RECORDS.length === 0) loadDashboard();
-  // Reports & KPIs: only load via "Buscar"/"Calcular" button, never on tab switch
-  // employees/centers/contractors/roles: render from local DATA (no Firebase call)
+  if (tab === 'dashboard') loadDashboard();
   if (tab === 'employees') renderEmployeeTable();
   if (tab === 'centers') renderCenterTable();
   if (tab === 'contractors') renderContractorTable();
@@ -1413,6 +1410,9 @@ async function loadDashboard() {
 // Re-renders dashboard from DASH_RECORDS (no Firebase call)
 function renderDashFromCache() {
   const centerId = $('dashCenter').value;
+  
+  let filtered = DASH_RECORDS;
+  if (centerId) filtered = filtered.filter(r => r.centerId === centerId);
   
   // Stats from ALL records (active + completed)
   let totalH = 0, extraH = 0, lessH = 0;
