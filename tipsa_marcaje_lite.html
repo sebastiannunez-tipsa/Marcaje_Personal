@@ -533,7 +533,7 @@ tr.active-row td { background: #ecfdf5; }
         <table style="min-width:960px">
           <thead><tr>
             <th style="width:36px"><input type="checkbox" id="rptSelectAll" onchange="toggleSelectAll(this.checked)" title="Seleccionar todo"></th>
-            <th>Estado</th><th>Fecha</th><th>Empleado</th><th>Contrata</th><th>Centro</th><th>Turno</th><th>Jorn.</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Extras</th><th>Menos</th><th>Acciones</th>
+            <th>Acciones</th><th>Estado</th><th>Fecha</th><th>Empleado</th><th>Contrata</th><th>Centro</th><th>Turno</th><th>Jorn.</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Extras</th><th>Menos</th>
           </tr></thead>
           <tbody id="rptTableBody"></tbody>
         </table>
@@ -600,7 +600,7 @@ tr.active-row td { background: #ecfdf5; }
       <input type="text" class="input mb-4" id="empSearch" placeholder="Buscar por nombre o DNI..." oninput="renderEmployeeTable()">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Estado</th><th>Nombre</th><th>DNI</th><th>Contrata</th><th>Turno</th><th>Rol</th><th>Alta</th><th>Baja</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Acciones</th><th>Estado</th><th>Nombre</th><th>DNI</th><th>Contrata</th><th>Turno</th><th>Rol</th><th>Alta</th><th>Baja</th></tr></thead>
           <tbody id="empTableBody"></tbody>
         </table>
       </div>
@@ -1637,6 +1637,10 @@ function renderReportsTable() {
     
     tbody.innerHTML += `<tr class="${isActive ? 'active-row' : ''}">
       <td><input type="checkbox" class="rpt-check" value="${r.id}" onchange="updateMassBar()"></td>
+      <td>
+        <button class="btn btn-outline" style="padding:3px 8px;font-size:10px" onclick="editRecord('${r.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:3px 8px;font-size:10px;color:var(--danger)" onclick="deleteRecordFromReports('${r.id}')">🗑</button>
+      </td>
       <td><span class="badge ${isActive ? 'badge-active' : 'badge-completed'}">${isActive ? '● Activo' : 'Cerrado'}</span></td>
       <td>${fmtDate(r.checkIn)}</td><td>${displayName}</td><td>${contractor?.name || '-'}</td><td>${center?.name || '-'}</td>
       <td>${emp?.shift || '-'}</td><td>${std}h</td>
@@ -1644,10 +1648,6 @@ function renderReportsTable() {
       <td>${h ? h.toFixed(1) + 'h' : '-'}</td>
       <td class="text-success">${diff > 0 ? '+' + diff.toFixed(1) + 'h' : ''}</td>
       <td class="text-danger">${diff < 0 ? diff.toFixed(1) + 'h' : ''}</td>
-      <td>
-        <button class="btn btn-outline" style="padding:3px 8px;font-size:10px" onclick="editRecord('${r.id}')">✏️</button>
-        <button class="btn btn-outline" style="padding:3px 8px;font-size:10px;color:var(--danger)" onclick="deleteRecordFromReports('${r.id}')">🗑</button>
-      </td>
     </tr>`;
   });
   if (filtered.length === 0) {
@@ -1983,16 +1983,16 @@ function renderEmployeeTable() {
       ? '<span class="badge badge-warn">⏸ Pausado</span>' 
       : '<span class="badge badge-active">✅ Activo</span>';
     tbody.innerHTML += `<tr style="${isPaused ? 'opacity:.6' : ''}">
+      <td>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editEmployee('${e.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="removeEmployee('${e.id}')">🗑</button>
+      </td>
       <td>${statusBadge}</td>
       <td class="font-black">${e.name}</td><td>${e.dni}</td>
       <td>${contractor?.name || '-'}</td><td>${e.shift || '-'}</td>
       <td>${role?.name || e.role}</td>
       <td>${e.hireDate || '-'}</td>
       <td>${e.terminationDate || '-'}</td>
-      <td>
-        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editEmployee('${e.id}')">✏️</button>
-        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="removeEmployee('${e.id}')">🗑</button>
-      </td>
     </tr>`;
   });
 }
