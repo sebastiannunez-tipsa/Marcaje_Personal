@@ -445,7 +445,7 @@ tr.active-row td { background: #ecfdf5; }
         </div>
         <div style="flex:1;min-width:140px">
           <label class="label">Centro</label>
-          <select class="select" id="dashCenter" onchange="loadDashboard()"><option value="">Todos</option></select>
+          <select class="select" id="dashCenter" onchange="renderDashFromCache()"><option value="">Todos</option></select>
         </div>
       </div>
     </div>
@@ -785,9 +785,17 @@ async function fbAuth() {
   throw new Error('Auth failed: ' + JSON.stringify(d));
 }
 
+// Per-collection cache TTLs (ms)
+const CACHE_TTLS = {
+  employees: 3600000,    // 1 hour — only changes when admin edits
+  centers: 86400000,     // 24 hours — almost never changes
+  contractors: 86400000, // 24 hours
+  roles: 86400000        // 24 hours
+};
+
 async function fbGetAll(col) {
   const cacheKey = `tipsa_cache_${col}`;
-  const cacheTTL = 300000; // 5 min cache (was 30s → saves massive reads on repeated loads)
+  const cacheTTL = CACHE_TTLS[col] || 300000;
   
   // Check localStorage cache first
   if (CACHE_TS[col] && (Date.now() - CACHE_TS[col]) < cacheTTL) {
@@ -1048,9 +1056,8 @@ function onEmployeeSelected() {
   const emp = DATA.employees.find(e => e.id === empId);
   
   if (emp) {
-    const role = DATA.roles.find(r => r.id === emp.roleId);
-    const isAdmin = emp.role === 'admin' || role?.isAdmin;
-    if (isAdmin || IS_ADMIN_MODE) {
+    // Password ONLY in admin mode — marcaje mode never asks password
+    if (IS_ADMIN_MODE && emp.password) {
       show('loginPasswordRow');
     } else {
       hide('loginPasswordRow');
@@ -1070,9 +1077,9 @@ async function doLogin() {
   
   const role = DATA.roles.find(r => r.id === emp.roleId);
   const isAdmin = emp.role === 'admin' || role?.isAdmin;
-  const loggingAsAdmin = IS_ADMIN_MODE || (isAdmin && emp.role === 'admin');
   
-  if (loggingAsAdmin && emp.password) {
+  // Password check ONLY in admin mode
+  if (IS_ADMIN_MODE && emp.password) {
     if ($('inpPassword').value !== emp.password) {
       $('loginError').textContent = 'Contraseña incorrecta';
       show('loginError');
@@ -1083,28 +1090,24 @@ async function doLogin() {
   CURRENT_USER = emp;
   SELECTED_CENTER_ID = $('selCenter').value || null;
   
-  // Link Firebase UID to employee + admins collection (required for Firestore security rules)
-  if (UID) {
+  // Link Firebase UID ONLY when entering as admin (saves 2 writes per employee login)
+  if (UID && IS_ADMIN_MODE && isAdmin) {
     try {
       await fbUpdate('employees', emp.id, { firebaseUid: UID });
     } catch (e) { console.warn('Link UID:', e); }
-    
-    // If admin, register in admins collection so isAdmin() rule works for writes
-    if (isAdmin) {
-      try {
-        await fbSet('admins', UID, {
-          uid: UID,
-          employeeId: emp.id,
-          linkedAt: new Date().toISOString()
-        });
-      } catch (e) { console.warn('Link admin:', e); }
-    }
+    try {
+      await fbSet('admins', UID, {
+        uid: UID,
+        employeeId: emp.id,
+        linkedAt: new Date().toISOString()
+      });
+    } catch (e) { console.warn('Link admin:', e); }
   }
   
   $('headerUser').innerHTML = `<span>${emp.name}</span><button class="btn btn-outline" style="padding:6px 12px;font-size:10px;color:#fff;border-color:rgba(255,255,255,.2)" onclick="doLogout()">Salir</button>`;
   
   hide('viewLogin');
-  if (loggingAsAdmin) {
+  if (IS_ADMIN_MODE) {
     showAdminView();
   } else {
     showEmployeeView();
@@ -1363,9 +1366,10 @@ function setAdminTab(tab) {
   const idx = ['dashboard','reports','kpis','employees','centers','contractors','roles'].indexOf(tab);
   if (btns[idx]) btns[idx].classList.add('active');
   
-  if (tab === 'dashboard') loadDashboard();
-  if (tab === 'reports') loadReports();
-  if (tab === 'kpis') loadKPIs();
+  // Dashboard: load on first open only, then use cached data
+  if (tab === 'dashboard' && DASH_RECORDS.length === 0) loadDashboard();
+  // Reports & KPIs: only load via "Buscar"/"Calcular" button, never on tab switch
+  // employees/centers/contractors/roles: render from local DATA (no Firebase call)
   if (tab === 'employees') renderEmployeeTable();
   if (tab === 'centers') renderCenterTable();
   if (tab === 'contractors') renderContractorTable();
@@ -1393,7 +1397,6 @@ let chartCentersInstance = null;
 async function loadDashboard() {
   const from = $('dashDateFrom').value;
   const to = $('dashDateTo').value;
-  const centerId = $('dashCenter').value;
   
   DASH_RECORDS = await fbQuery({
     from: [{ collectionId: 'attendance' }],
@@ -1404,9 +1407,12 @@ async function loadDashboard() {
     orderBy: [{ field: { fieldPath: 'checkIn' }, direction: 'ASCENDING' }]
   });
   
-  // Filter by center
-  let filtered = DASH_RECORDS;
-  if (centerId) filtered = filtered.filter(r => r.centerId === centerId);
+  renderDashFromCache();
+}
+
+// Re-renders dashboard from DASH_RECORDS (no Firebase call)
+function renderDashFromCache() {
+  const centerId = $('dashCenter').value;
   
   // Stats from ALL records (active + completed)
   let totalH = 0, extraH = 0, lessH = 0;
