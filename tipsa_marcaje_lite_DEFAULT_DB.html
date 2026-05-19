@@ -1,0 +1,2273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TIPSA Control Horario — Lite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,700;0,9..40,900;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --tipsa-blue: #004A99;
+  --tipsa-dark: #0A1628;
+  --bg: #F4F6F9;
+  --card: #FFFFFF;
+  --border: #E2E8F0;
+  --text: #0F172A;
+  --muted: #64748B;
+  --success: #059669;
+  --danger: #DC2626;
+  --warn: #D97706;
+  --radius: 16px;
+  --radius-lg: 24px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+/* ── UTILITIES ── */
+.hidden { display: none !important; }
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.gap-6 { gap: 24px; }
+.w-full { width: 100%; }
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.font-bold { font-weight: 700; }
+.font-black { font-weight: 900; }
+.text-xs { font-size: 11px; }
+.text-sm { font-size: 13px; }
+.text-lg { font-size: 18px; }
+.text-xl { font-size: 22px; }
+.text-2xl { font-size: 28px; }
+.text-3xl { font-size: 34px; }
+.uppercase { text-transform: uppercase; }
+.tracking { letter-spacing: 0.08em; }
+.text-muted { color: var(--muted); }
+.text-white { color: #fff; }
+.text-success { color: var(--success); }
+.text-danger { color: var(--danger); }
+.text-warn { color: var(--warn); }
+.mt-2 { margin-top: 8px; }
+.mt-4 { margin-top: 16px; }
+.mt-6 { margin-top: 24px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-4 { margin-bottom: 16px; }
+.mb-6 { margin-bottom: 24px; }
+.p-4 { padding: 16px; }
+.p-6 { padding: 24px; }
+.p-8 { padding: 32px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+
+/* ── HEADER ── */
+.header {
+  background: var(--tipsa-dark);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+}
+.header-brand {
+  display: flex; align-items: center; gap: 12px;
+}
+.header-brand svg { width: 28px; height: 28px; }
+.header-brand h1 {
+  font-size: 16px; font-weight: 900; color: #fff;
+  letter-spacing: -0.02em;
+}
+.header-brand span {
+  font-size: 10px; color: rgba(255,255,255,.5);
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+}
+.header-user {
+  display: flex; align-items: center; gap: 12px;
+  color: rgba(255,255,255,.7); font-size: 12px; font-weight: 700;
+}
+
+/* ── CARDS ── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+.card-sm {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+/* ── BUTTONS ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 14px 24px;
+  border-radius: var(--radius);
+  font-weight: 900; font-size: 13px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  border: none; cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--tipsa-blue); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #003d80; }
+.btn-dark { background: var(--tipsa-dark); color: #fff; }
+.btn-dark:hover:not(:disabled) { background: #1a2940; }
+.btn-success { background: var(--success); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-outline {
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border);
+}
+.btn-outline:hover { background: #f1f5f9; }
+.btn-lg { padding: 20px 32px; font-size: 16px; border-radius: 20px; }
+.btn-block { width: 100%; }
+.btn-giant {
+  width: 100%; padding: 28px; font-size: 22px;
+  border-radius: 24px; box-shadow: 0 8px 32px rgba(0,74,153,.2);
+}
+
+/* ── INPUTS ── */
+.input, .select {
+  width: 100%; padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: #F8FAFC;
+  font-family: inherit; font-size: 13px; font-weight: 700;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.input:focus, .select:focus { border-color: var(--tipsa-blue); }
+.label {
+  display: block; font-size: 10px; font-weight: 900;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.1em; margin-bottom: 6px;
+}
+
+/* ── STAT CARDS ── */
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.stat-label {
+  font-size: 10px; font-weight: 900; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.1em;
+}
+.stat-value {
+  font-size: 24px; font-weight: 900; color: var(--text);
+  margin-top: 4px;
+}
+
+/* ── TABLE ── */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  padding: 12px 16px; font-size: 10px; font-weight: 900;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.08em; text-align: left;
+  background: #F8FAFC; border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+td {
+  padding: 12px 16px; font-size: 12px; font-weight: 700;
+  border-bottom: 1px solid #f1f5f9;
+  white-space: nowrap;
+}
+tr:hover td { background: #f8fafc; }
+tr.active-row td { background: #ecfdf5; }
+
+/* ── BADGE ── */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 99px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.badge-active { background: #dcfce7; color: #166534; }
+.badge-completed { background: #f1f5f9; color: #475569; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+
+/* ── NAV TABS ── */
+.nav-tabs {
+  display: flex; gap: 4px; overflow-x: auto;
+  padding: 4px; background: var(--card);
+  border-radius: var(--radius); border: 1px solid var(--border);
+  -webkit-overflow-scrolling: touch;
+}
+.nav-tab {
+  flex-shrink: 0; padding: 10px 18px;
+  border-radius: 12px; font-size: 12px; font-weight: 900;
+  color: var(--muted); background: transparent;
+  border: none; cursor: pointer; font-family: inherit;
+  transition: all 0.2s; white-space: nowrap;
+}
+.nav-tab.active { background: var(--tipsa-blue); color: #fff; }
+.nav-tab:hover:not(.active) { background: #f1f5f9; }
+
+/* ── MODAL ── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(15,23,42,0.6);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.modal {
+  background: var(--card); border-radius: var(--radius-lg);
+  width: 100%; max-width: 480px; max-height: 90vh;
+  overflow-y: auto; padding: 32px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.2);
+}
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  z-index: 999; padding: 14px 24px;
+  border-radius: var(--radius);
+  font-size: 13px; font-weight: 900;
+  color: #fff; max-width: 90%;
+  animation: slideUp 0.3s;
+}
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+@keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } }
+
+/* ── PULSE DOT ── */
+.pulse-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--success);
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+
+/* ── LOADING ── */
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--tipsa-blue);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── RESPONSIVE ── */
+.main-content { padding: 16px; max-width: 960px; margin: 0 auto; }
+@media (min-width: 640px) { .main-content { padding: 24px; } }
+@media (max-width: 480px) {
+  .grid-4 { grid-template-columns: 1fr 1fr; }
+  .btn-giant { font-size: 18px; padding: 22px; }
+  .card { padding: 16px; }
+}
+
+/* ── CENTER SELECT BUTTONS ── */
+.center-btn {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px; border-radius: var(--radius);
+  border: 2px solid var(--border); background: var(--card);
+  cursor: pointer; transition: all 0.2s;
+  text-align: left; width: 100; font-family: inherit;
+}
+.center-btn:hover { border-color: #cbd5e1; }
+.center-btn.selected { border-color: var(--tipsa-blue); background: #eff6ff; }
+.center-btn:disabled { opacity: .5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════ HEADER ════════════════════ -->
+<div class="header" id="appHeader">
+  <div class="header-brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8m-4-4h8"/></svg>
+    <div>
+      <h1>TIPSA CONTROL HORARIO</h1>
+      <span>Versión Lite · Firestore REST</span>
+    </div>
+  </div>
+  <div class="header-user" id="headerUser"></div>
+</div>
+
+<!-- ════════════════════ LOADING ════════════════════ -->
+<div id="viewLoading" class="flex flex-col items-center justify-center gap-4" style="min-height:80vh">
+  <div class="spinner"></div>
+  <p class="text-muted font-bold text-sm">Conectando con Firebase...</p>
+</div>
+
+<!-- ════════════════════ LOGIN VIEW ════════════════════ -->
+<div id="viewLogin" class="hidden main-content" style="max-width:440px;margin-top:40px">
+  <div class="card">
+    <div class="text-center mb-6">
+      <div style="width:56px;height:56px;border-radius:16px;background:#eff6ff;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--tipsa-blue)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <h2 class="text-2xl font-black" id="loginTitle">Acceso Marcaje</h2>
+      <p class="text-muted text-sm mt-2">Identifícate para registrar tu jornada</p>
+    </div>
+
+    <div id="loginError" class="hidden" style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;color:#dc2626;font-size:12px;font-weight:700;margin-bottom:16px"></div>
+
+    <div class="flex flex-col gap-4">
+      <!-- Toggle admin/employee -->
+      <div class="grid-2">
+        <button class="btn btn-primary btn-block" id="btnModeEmployee" onclick="setLoginMode(false)">Empleado</button>
+        <button class="btn btn-outline btn-block" id="btnModeAdmin" onclick="setLoginMode(true)">Admin</button>
+      </div>
+
+      <div id="loginCenterRow">
+        <label class="label">Centro de Trabajo</label>
+        <select class="select" id="selCenter" onchange="filterLoginEmployees()">
+          <option value="">Seleccionar centro...</option>
+        </select>
+      </div>
+      <div id="loginContractorRow">
+        <label class="label">Contrata</label>
+        <select class="select" id="selContractor" onchange="filterLoginEmployees()">
+          <option value="">Seleccionar contrata...</option>
+        </select>
+      </div>
+      <div>
+        <label class="label" id="lblEmployee">Empleado</label>
+        <select class="select" id="selEmployee" onchange="onEmployeeSelected()">
+          <option value="">Seleccionar...</option>
+        </select>
+      </div>
+      <div id="loginPasswordRow" class="hidden">
+        <label class="label">🔒 Contraseña Admin</label>
+        <input type="password" class="input" id="inpPassword" placeholder="Contraseña">
+      </div>
+      <button class="btn btn-primary btn-block btn-lg" id="btnLogin" onclick="doLogin()" disabled>ACCEDER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ EMPLOYEE VIEW ════════════════════ -->
+<div id="viewEmployee" class="hidden main-content" style="max-width:640px">
+  <div class="card">
+    <div class="text-center mb-6">
+      <h2 class="text-2xl font-black" id="empName"></h2>
+      <div id="empBackupBadge" class="hidden mt-2">
+        <span class="badge badge-warn" id="empBackupLabel"></span>
+      </div>
+      <div class="flex items-center justify-center gap-3 mt-4" style="flex-wrap:wrap">
+        <span class="badge badge-completed" id="empContractor"></span>
+        <span class="badge badge-completed" id="empRole"></span>
+        <span class="badge badge-completed" id="empShift"></span>
+      </div>
+    </div>
+
+    <div id="empError" class="hidden" style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;color:#dc2626;font-size:12px;font-weight:700;margin-bottom:16px"></div>
+    <div id="empSuccess" class="hidden" style="padding:12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;color:#059669;font-size:12px;font-weight:700;margin-bottom:16px"></div>
+
+    <!-- Center selection -->
+    <div class="mb-4">
+      <label class="label">Centro de Trabajo</label>
+      <div class="flex flex-col gap-2" id="empCenters"></div>
+    </div>
+
+    <!-- Status -->
+    <div class="grid-2 mb-4">
+      <div class="card-sm">
+        <div class="stat-label">Estado</div>
+        <div class="flex items-center gap-2 mt-2">
+          <div id="empStatusDot" style="width:10px;height:10px;border-radius:50%;background:#cbd5e1"></div>
+          <span class="font-black text-lg" id="empStatusText">INACTIVO</span>
+        </div>
+      </div>
+      <div class="card-sm">
+        <div class="stat-label">Hora Entrada</div>
+        <div class="font-black text-lg mt-2" id="empCheckInTime">--:--:--</div>
+      </div>
+    </div>
+
+    <!-- Action button -->
+    <button class="btn-giant btn-primary" id="btnCheckAction" onclick="handleCheckAction()" disabled>
+      ⏳ Cargando...
+    </button>
+
+    <button class="btn btn-outline btn-block mt-4" onclick="doLogout()">
+      ← CERRAR SESIÓN
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════════ BACKUP MODAL ════════════════════ -->
+<div id="modalBackup" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 class="text-xl font-black mb-2">Identificación Backup</h3>
+    <p class="text-muted text-sm mb-4">Introduce tu nombre completo para este registro.</p>
+    <input type="text" class="input mb-4" id="inpBackupName" placeholder="Ej: Juan Pérez García" maxlength="30">
+    <div class="grid-2">
+      <button class="btn btn-outline btn-block" onclick="closeModal('modalBackup')">Cancelar</button>
+      <button class="btn btn-primary btn-block" onclick="confirmBackup()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ ADMIN VIEW ════════════════════ -->
+<div id="viewAdmin" class="hidden main-content">
+  <div class="nav-tabs mb-6" id="adminTabs">
+    <button class="nav-tab active" onclick="setAdminTab('dashboard')">Dashboard</button>
+    <button class="nav-tab" onclick="setAdminTab('reports')">Informes</button>
+    <button class="nav-tab" onclick="setAdminTab('kpis')">KPIs RRHH</button>
+    <button class="nav-tab" onclick="setAdminTab('employees')">Empleados</button>
+    <button class="nav-tab" onclick="setAdminTab('centers')">Centros</button>
+    <button class="nav-tab" onclick="setAdminTab('contractors')">Contratas</button>
+    <button class="nav-tab" onclick="setAdminTab('roles')">Roles</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="tabDashboard">
+    <div class="card mb-4">
+      <div class="flex gap-3" style="flex-wrap:wrap;align-items:end">
+        <div style="flex:1;min-width:120px">
+          <label class="label">Desde</label>
+          <input type="date" class="input" id="dashDateFrom" onchange="loadDashboard()">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label class="label">Hasta</label>
+          <input type="date" class="input" id="dashDateTo" onchange="loadDashboard()">
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label class="label">Centro</label>
+          <select class="select" id="dashCenter" onchange="renderDashFromCache()"><option value="">Todos</option></select>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px" class="mb-6">
+      <div class="stat-card"><div class="stat-label">Activos Ahora</div><div class="stat-value" id="statActive" style="color:var(--success)">0</div></div>
+      <div class="stat-card"><div class="stat-label">Empleados Hoy</div><div class="stat-value" id="statEmployees">0</div></div>
+      <div class="stat-card"><div class="stat-label">Total Horas</div><div class="stat-value" id="statHours">0h</div></div>
+      <div class="stat-card"><div class="stat-label">H. Extras</div><div class="stat-value text-success" id="statExtra">+0h</div></div>
+      <div class="stat-card"><div class="stat-label">H. Menos</div><div class="stat-value text-danger" id="statLess">-0h</div></div>
+      <div class="stat-card" id="quotaCard" style="border-color:#e2e8f0">
+        <div class="stat-label">Cuota Lecturas</div>
+        <div class="stat-value text-sm" id="statQuota" style="font-size:14px">-</div>
+        <div style="height:4px;background:#e2e8f0;border-radius:4px;margin-top:6px;overflow:hidden">
+          <div id="quotaBar" style="height:100%;background:var(--success);border-radius:4px;width:0%;transition:width 0.3s"></div>
+        </div>
+      </div>
+    </div>
+    <!-- Chart: Horas por Centro -->
+    <div class="card mb-4">
+      <h3 class="font-black uppercase tracking text-xs text-muted mb-3">Horas por Centro</h3>
+      <div style="position:relative;height:200px;max-height:200px;overflow:hidden">
+        <canvas id="chartCenters"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-black uppercase tracking text-sm">🟢 Empleados Activos (sin salida)</h3>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Empleado</th><th>Centro</th><th>Contrata</th><th>Entrada</th><th>Tiempo</th><th>Acciones</th>
+          </tr></thead>
+          <tbody id="dashTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- REPORTS -->
+  <div id="tabReports" class="hidden">
+    <div class="card mb-4">
+      <div class="flex gap-3" style="flex-wrap:wrap;align-items:end">
+        <div style="flex:1;min-width:120px">
+          <label class="label">Desde</label>
+          <input type="date" class="input" id="rptDateFrom">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label class="label">Hasta</label>
+          <input type="date" class="input" id="rptDateTo">
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label class="label">Centro</label>
+          <select class="select" id="rptCenter"><option value="">Todos</option></select>
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label class="label">Contrata</label>
+          <select class="select" id="rptContractor"><option value="">Todas</option></select>
+        </div>
+        <button class="btn btn-primary" onclick="loadReports()">Buscar</button>
+        <button class="btn btn-outline" id="btnRptActive" onclick="toggleActiveFilter()" title="Filtrar solo activos (sin salida)" style="white-space:nowrap">🟢 Solo Activos</button>
+      </div>
+    </div>
+    <!-- Mass action bar (hidden by default) -->
+    <div id="rptMassBar" class="hidden card-sm mb-4" style="background:#eff6ff;border-color:#93c5fd">
+      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px">
+        <span class="font-black text-sm" id="rptSelectedCount">0 seleccionados</span>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-dark text-xs" onclick="massCheckOut()">⬅ Marcar SALIDA a seleccionados</button>
+          <button class="btn btn-primary text-xs" onclick="massCheckIn()">➡ Marcar ENTRADA masiva</button>
+          <button class="btn btn-outline text-xs" onclick="clearSelection()">✖ Deseleccionar</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="flex justify-between items-center mb-4" style="flex-wrap:wrap;gap:8px">
+        <h3 class="font-black uppercase tracking text-sm">Resultados (<span id="rptCount">0</span>)</h3>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-outline text-xs" onclick="exportCSV()" title="Exportar CSV">📄 CSV</button>
+          <button class="btn btn-outline text-xs" onclick="exportExcel()" style="border-color:#217346;color:#217346" title="Exportar Excel">📊 Excel</button>
+          <button class="btn btn-outline text-xs" onclick="exportPDF()" style="border-color:#DC2626;color:#DC2626" title="Exportar PDF">📕 PDF</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <table style="min-width:960px">
+          <thead><tr>
+            <th style="width:36px"><input type="checkbox" id="rptSelectAll" onchange="toggleSelectAll(this.checked)" title="Seleccionar todo"></th>
+            <th>Estado</th><th>Fecha</th><th>Empleado</th><th>Contrata</th><th>Centro</th><th>Turno</th><th>Jorn.</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Extras</th><th>Menos</th><th>Acciones</th>
+          </tr></thead>
+          <tbody id="rptTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIs RRHH -->
+  <div id="tabKpis" class="hidden">
+    <div class="card mb-4">
+      <div class="flex gap-3" style="flex-wrap:wrap;align-items:end">
+        <div style="flex:1;min-width:120px">
+          <label class="label">Desde</label>
+          <input type="date" class="input" id="kpiDateFrom">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label class="label">Hasta</label>
+          <input type="date" class="input" id="kpiDateTo">
+        </div>
+        <button class="btn btn-primary" onclick="loadKPIs()">Calcular</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px" class="mb-6">
+      <div class="stat-card"><div class="stat-label">Empleados Activos</div><div class="stat-value" id="kpiActiveEmps">0</div></div>
+      <div class="stat-card"><div class="stat-label">Tasa Asistencia</div><div class="stat-value" id="kpiAttendance">0%</div></div>
+      <div class="stat-card"><div class="stat-label">Media Horas/Día</div><div class="stat-value" id="kpiAvgHours">0h</div></div>
+      <div class="stat-card"><div class="stat-label">Tasa Puntualidad</div><div class="stat-value" id="kpiPunctuality">0%</div></div>
+      <div class="stat-card"><div class="stat-label">Total H. Extras</div><div class="stat-value text-success" id="kpiTotalExtra">0h</div></div>
+      <div class="stat-card"><div class="stat-label">Total H. Menos</div><div class="stat-value text-danger" id="kpiTotalLess">0h</div></div>
+    </div>
+    <!-- Chart: Horas por empleado -->
+    <div class="card mb-4">
+      <h3 class="font-black uppercase tracking text-xs text-muted mb-3">Horas Trabajadas por Empleado (Top 15)</h3>
+      <div style="position:relative;height:280px;max-height:280px;overflow:hidden">
+        <canvas id="chartKpiEmps"></canvas>
+      </div>
+    </div>
+    <!-- Chart: Horas diarias -->
+    <div class="card mb-4">
+      <h3 class="font-black uppercase tracking text-xs text-muted mb-3">Evolución Horas Diarias</h3>
+      <div style="position:relative;height:200px;max-height:200px;overflow:hidden">
+        <canvas id="chartKpiDaily"></canvas>
+      </div>
+    </div>
+    <!-- Table: detalle por contrata -->
+    <div class="card">
+      <h3 class="font-black uppercase tracking text-xs text-muted mb-3">Resumen por Contrata</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Contrata</th><th>Empleados</th><th>Registros</th><th>Total Horas</th><th>Extras</th><th>Menos</th><th>Media H/Emp</th></tr></thead>
+          <tbody id="kpiContractorBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- EMPLOYEES -->
+  <div id="tabEmployees" class="hidden">
+    <div class="card mb-4">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-black uppercase tracking text-sm">Gestión de Empleados (<span id="empCount">0</span>)</h3>
+        <button class="btn btn-primary text-xs" onclick="showEmployeeForm()">+ Nuevo</button>
+      </div>
+      <input type="text" class="input mb-4" id="empSearch" placeholder="Buscar por nombre o DNI..." oninput="renderEmployeeTable()">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nombre</th><th>DNI</th><th>Contrata</th><th>Turno</th><th>Rol</th><th>Acciones</th></tr></thead>
+          <tbody id="empTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTERS -->
+  <div id="tabCenters" class="hidden">
+    <div class="card">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-black uppercase tracking text-sm">Centros de Trabajo</h3>
+        <button class="btn btn-primary text-xs" onclick="showCenterForm()">+ Nuevo</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nombre</th><th>Dirección</th><th>Lat</th><th>Lon</th><th>Radio (m)</th><th>Acciones</th></tr></thead>
+          <tbody id="cenTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTRACTORS -->
+  <div id="tabContractors" class="hidden">
+    <div class="card">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-black uppercase tracking text-sm">Contratas</h3>
+        <button class="btn btn-primary text-xs" onclick="showContractorForm()">+ Nueva</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nombre</th><th>Empleados</th><th>Acciones</th></tr></thead>
+          <tbody id="conTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROLES -->
+  <div id="tabRoles" class="hidden">
+    <div class="card">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-black uppercase tracking text-sm">Roles</h3>
+        <button class="btn btn-primary text-xs" onclick="showRoleForm()">+ Nuevo</button>
+      </div>
+      <p class="text-muted text-xs mb-4">Los roles personalizados permiten asignar permisos de administrador a empleados.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nombre</th><th>Es Admin</th><th>Empleados</th><th>Acciones</th></tr></thead>
+          <tbody id="roleTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ EDIT MODAL ════════════════════ -->
+<div id="modalEdit" class="modal-overlay hidden">
+  <div class="modal" id="modalEditContent"></div>
+</div>
+
+<!-- ════════════════════ TOAST ════════════════════ -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.3/jspdf.plugin.autotable.min.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════
+   TIPSA CONTROL HORARIO — LITE
+   Single-file HTML · Firestore REST API · Zero SDK
+   ══════════════════════════════════════════════════════ */
+
+// ── Firebase Config ──
+const CFG = {
+  apiKey: 'AIzaSyCSX_fZrgaZ_jVPqCEIFlA01kF_71AXT4w',
+  projectId: 'gen-lang-client-0796008211',
+  dbId: '(default)'
+};
+const FB_BASE = `https://firestore.googleapis.com/v1/projects/${CFG.projectId}/databases/${CFG.dbId}/documents`;
+const FB_QUERY = `https://firestore.googleapis.com/v1/projects/${CFG.projectId}/databases/${CFG.dbId}/documents:runQuery`;
+
+// ── State ──
+let TOKEN = null;
+let UID = null;
+let DATA = { employees: [], centers: [], contractors: [], roles: [] };
+let CURRENT_USER = null;
+let ACTIVE_SESSION = null;
+let IS_ADMIN_MODE = false;
+let SELECTED_CENTER_ID = null;
+let POLL_INTERVAL = null;
+let INACTIVITY_TIMER = null;
+let CACHE_TS = {};
+
+// ── Quota Control ──
+const QUOTA_LIMIT = 40000;
+const QUOTA_WARN = 35000;
+let READS_TODAY = parseInt(localStorage.getItem('tipsa_reads_count') || '0');
+let READS_DATE = localStorage.getItem('tipsa_reads_date') || '';
+
+// Reset counter if new day
+if (READS_DATE !== todayStr()) { READS_TODAY = 0; READS_DATE = todayStr(); saveQuota(); }
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function saveQuota() {
+  localStorage.setItem('tipsa_reads_count', String(READS_TODAY));
+  localStorage.setItem('tipsa_reads_date', READS_DATE);
+}
+function addReads(n) {
+  READS_TODAY += n;
+  saveQuota();
+  if (READS_TODAY >= QUOTA_LIMIT) {
+    toast(`⚠️ LÍMITE DE CUOTA ALCANZADO (${READS_TODAY}/${QUOTA_LIMIT}). App en modo offline.`, 'error');
+    return false;
+  }
+  if (READS_TODAY >= QUOTA_WARN) {
+    console.warn(`⚠️ Quota warning: ${READS_TODAY}/${QUOTA_LIMIT} reads`);
+  }
+  return true;
+}
+function quotaOK() { return READS_TODAY < QUOTA_LIMIT; }
+
+// ── Firestore Value Helpers ──
+const toVal = v => {
+  if (v === null || v === undefined) return { nullValue: 'NULL_VALUE' };
+  if (typeof v === 'string') return { stringValue: v };
+  if (typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(toVal) } };
+  if (typeof v === 'object') {
+    const fields = {};
+    Object.entries(v).forEach(([k, val]) => { if (val !== undefined) fields[k] = toVal(val); });
+    return { mapValue: { fields } };
+  }
+  return { stringValue: String(v) };
+};
+
+const fromVal = v => {
+  if (!v) return null;
+  if ('stringValue' in v) return v.stringValue;
+  if ('integerValue' in v) return parseInt(v.integerValue);
+  if ('doubleValue' in v) return v.doubleValue;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('nullValue' in v) return null;
+  if ('arrayValue' in v) return (v.arrayValue.values || []).map(fromVal);
+  if ('mapValue' in v) {
+    const o = {};
+    Object.entries(v.mapValue.fields || {}).forEach(([k, val]) => o[k] = fromVal(val));
+    return o;
+  }
+  return null;
+};
+
+const docToObj = doc => {
+  const o = {};
+  Object.entries(doc.fields || {}).forEach(([k, v]) => o[k] = fromVal(v));
+  const parts = doc.name.split('/');
+  if (!o.id) o.id = parts[parts.length - 1];
+  return o;
+};
+
+const objToFields = obj => {
+  const fields = {};
+  Object.entries(obj).forEach(([k, v]) => { if (v !== undefined) fields[k] = toVal(v); });
+  return fields;
+};
+
+// ── Firebase REST API ──
+const headers = () => ({ 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' });
+
+async function fbAuth() {
+  const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${CFG.apiKey}`, {
+    method: 'POST', body: JSON.stringify({ returnSecureToken: true })
+  });
+  const d = await r.json();
+  if (d.idToken) { TOKEN = d.idToken; UID = d.localId; return true; }
+  // Try signing in if signUp fails (existing anonymous)
+  const r2 = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${CFG.apiKey}`, {
+    method: 'POST', body: JSON.stringify({ returnSecureToken: true })
+  });
+  throw new Error('Auth failed: ' + JSON.stringify(d));
+}
+
+// Per-collection cache TTLs (ms)
+const CACHE_TTLS = {
+  employees: 3600000,    // 1 hour — only changes when admin edits
+  centers: 86400000,     // 24 hours — almost never changes
+  contractors: 86400000, // 24 hours
+  roles: 86400000        // 24 hours
+};
+
+async function fbGetAll(col) {
+  const cacheKey = `tipsa_cache_${col}`;
+  const cacheTTL = CACHE_TTLS[col] || 300000;
+  
+  // Check localStorage cache first
+  if (CACHE_TS[col] && (Date.now() - CACHE_TS[col]) < cacheTTL) {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) return JSON.parse(cached);
+  }
+  
+  // Quota guard: if near limit, use cache even if stale
+  if (!quotaOK()) {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) { console.warn(`Quota limit - using cached ${col}`); return JSON.parse(cached); }
+    throw new Error('QUOTA_EXCEEDED');
+  }
+  
+  const r = await fetch(`${FB_QUERY}?key=${CFG.apiKey}`, {
+    method: 'POST', headers: headers(),
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: col }], limit: 1000 } })
+  });
+  if (r.status === 429) {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) { toast('Cuota Firebase agotada. Usando datos en caché.', 'error'); return JSON.parse(cached); }
+    throw new Error('QUOTA_EXCEEDED');
+  }
+  if (!r.ok) {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) { console.warn(`fbGetAll ${col} failed (${r.status}), using cache`); return JSON.parse(cached); }
+    throw new Error(`Error ${r.status} loading ${col}`);
+  }
+  const d = await r.json();
+  const docs = d.filter(x => x.document).map(x => docToObj(x.document));
+  
+  // Count reads
+  addReads(Math.max(docs.length, 1));
+  
+  // Save to cache
+  localStorage.setItem(cacheKey, JSON.stringify(docs));
+  CACHE_TS[col] = Date.now();
+  return docs;
+}
+
+async function fbQuery(structuredQuery) {
+  // Quota guard
+  if (!quotaOK()) {
+    toast('Límite de lecturas alcanzado. Reintenta mañana.', 'error');
+    return [];
+  }
+  
+  const r = await fetch(`${FB_QUERY}?key=${CFG.apiKey}`, {
+    method: 'POST', headers: headers(),
+    body: JSON.stringify({ structuredQuery })
+  });
+  if (r.status === 429) {
+    toast('Cuota Firebase agotada. Reintenta más tarde.', 'error');
+    return [];
+  }
+  if (!r.ok) return [];
+  const d = await r.json();
+  const docs = d.filter(x => x.document).map(x => docToObj(x.document));
+  
+  // Count reads
+  addReads(Math.max(docs.length, 1));
+  
+  return docs;
+}
+
+async function fbSet(col, id, data) {
+  const fields = objToFields(data);
+  const r = await fetch(`${FB_BASE}/${col}/${id}?key=${CFG.apiKey}`, {
+    method: 'PATCH', headers: headers(),
+    body: JSON.stringify({ fields })
+  });
+  if (!r.ok) throw new Error(`Write failed: ${r.status}`);
+  // Invalidate cache
+  delete CACHE_TS[col];
+  return await r.json();
+}
+
+async function fbUpdate(col, id, data) {
+  const fields = objToFields(data);
+  const masks = Object.keys(data).map(k => `updateMask.fieldPaths=${k}`).join('&');
+  const r = await fetch(`${FB_BASE}/${col}/${id}?${masks}&key=${CFG.apiKey}`, {
+    method: 'PATCH', headers: headers(),
+    body: JSON.stringify({ fields })
+  });
+  if (!r.ok) throw new Error(`Update failed: ${r.status}`);
+  delete CACHE_TS[col];
+}
+
+async function fbDelete(col, id) {
+  const r = await fetch(`${FB_BASE}/${col}/${id}?key=${CFG.apiKey}`, {
+    method: 'DELETE', headers: headers()
+  });
+  if (!r.ok) throw new Error(`Delete failed: ${r.status}`);
+  delete CACHE_TS[col];
+}
+
+// ── Geo ──
+function calcDist(lat1, lon1, lat2, lon2) {
+  const R = 6371e3, p = Math.PI / 180;
+  const dLat = (lat2 - lat1) * p, dLon = (lon2 - lon1) * p;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*p) * Math.cos(lat2*p) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ── Date helpers ──
+const fmtTime = iso => { try { const d = new Date(iso); return d.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit',second:'2-digit'}); } catch { return '--:--'; } };
+const fmtDate = iso => { try { const d = new Date(iso); return d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit',year:'2-digit'}); } catch { return '--/--/--'; } };
+const fmtDateTime = iso => `${fmtDate(iso)} ${fmtTime(iso)}`;
+const hoursWorked = (ci, co) => {
+  if (!ci || !co) return 0;
+  return (new Date(co) - new Date(ci)) / 3600000;
+};
+
+// ── UI Helpers ──
+function $(id) { return document.getElementById(id); }
+function show(id) { $(id)?.classList.remove('hidden'); }
+function hide(id) { $(id)?.classList.add('hidden'); }
+function toast(msg, type = 'success') {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = `toast toast-${type}`;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 4000);
+}
+function closeModal(id) { hide(id); }
+
+// ══════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════
+async function init() {
+  try {
+    await fbAuth();
+    DATA.employees = await fbGetAll('employees');
+    DATA.centers = await fbGetAll('centers');
+    DATA.contractors = await fbGetAll('contractors');
+    DATA.roles = await fbGetAll('roles');
+    
+    hide('viewLoading');
+    
+    if (DATA.employees.length === 0) {
+      // Bootstrap
+      const centerId = `wc_${Date.now()}`;
+      await fbSet('centers', centerId, { id: centerId, name: 'Oficina Central', address: 'Calle Principal 1', latitude: 40.4168, longitude: -3.7038, radius: 500 });
+      await fbSet('employees', 'admin', { id: 'admin', name: 'Administrador', dni: 'ADMIN01', role: 'admin', centerIds: [centerId], area: '', shift: '', password: 'admin' });
+      toast('Admin creado: DNI=ADMIN01, Pass=admin');
+      DATA.employees = await fbGetAll('employees');
+      DATA.centers = await fbGetAll('centers');
+    }
+    
+    showLogin();
+  } catch (e) {
+    if (e.message?.includes('QUOTA_EXCEEDED')) {
+      hide('viewLoading');
+      document.body.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px">
+          <div class="card text-center" style="max-width:400px">
+            <div style="font-size:48px;margin-bottom:16px">⚠️</div>
+            <h2 class="text-xl font-black mb-2">Límite Firestore Superado</h2>
+            <p class="text-muted text-sm mb-4">Se ha agotado la cuota gratuita. Se restablece ~09:00 hora Madrid.</p>
+            <button class="btn btn-primary btn-block" onclick="location.reload()">Reintentar</button>
+          </div>
+        </div>`;
+    } else {
+      $('viewLoading').innerHTML = `<div class="card text-center" style="max-width:400px;margin:60px auto"><p class="text-danger font-bold">Error: ${e.message}</p><button class="btn btn-primary mt-4" onclick="location.reload()">Reintentar</button></div>`;
+    }
+  }
+}
+
+// ══════════════════════════════════════
+//  LOGIN
+// ══════════════════════════════════════
+function showLogin() {
+  hide('viewEmployee'); hide('viewAdmin');
+  show('viewLogin');
+  $('headerUser').innerHTML = '';
+  IS_ADMIN_MODE = false;
+  CURRENT_USER = null;
+  ACTIVE_SESSION = null;
+  if (POLL_INTERVAL) clearInterval(POLL_INTERVAL);
+  
+  populateLoginSelects();
+  setLoginMode(false);
+}
+
+function setLoginMode(isAdmin) {
+  IS_ADMIN_MODE = isAdmin;
+  if (isAdmin) {
+    $('btnModeAdmin').className = 'btn btn-primary btn-block';
+    $('btnModeEmployee').className = 'btn btn-outline btn-block';
+    $('loginTitle').textContent = 'Acceso Administrador';
+    $('lblEmployee').textContent = 'Administrador';
+    hide('loginCenterRow'); hide('loginContractorRow');
+  } else {
+    $('btnModeEmployee').className = 'btn btn-primary btn-block';
+    $('btnModeAdmin').className = 'btn btn-outline btn-block';
+    $('loginTitle').textContent = 'Acceso Marcaje';
+    $('lblEmployee').textContent = 'Empleado';
+    show('loginCenterRow'); show('loginContractorRow');
+  }
+  $('selEmployee').value = '';
+  hide('loginPasswordRow');
+  $('btnLogin').disabled = true;
+  filterLoginEmployees();
+}
+
+function populateLoginSelects() {
+  const cs = $('selCenter');
+  cs.innerHTML = '<option value="">Seleccionar centro...</option>';
+  DATA.centers.forEach(c => cs.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+  
+  const ct = $('selContractor');
+  ct.innerHTML = '<option value="">Seleccionar contrata...</option>';
+  DATA.contractors.forEach(c => ct.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+  
+  // Auto-detect nearest center
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(pos => {
+      let minD = Infinity, nearest = null;
+      DATA.centers.forEach(c => {
+        const d = calcDist(pos.coords.latitude, pos.coords.longitude, c.latitude, c.longitude);
+        if (d < minD) { minD = d; nearest = c; }
+      });
+      if (nearest) { cs.value = nearest.id; filterLoginEmployees(); }
+    }, () => {}, { timeout: 10000, maximumAge: 60000 });
+  }
+}
+
+function filterLoginEmployees() {
+  const sel = $('selEmployee');
+  sel.innerHTML = '<option value="">Seleccionar...</option>';
+  
+  const centerId = $('selCenter').value;
+  const contractorId = $('selContractor').value;
+  
+  let filtered = DATA.employees.filter(e => {
+    // Filter out terminated
+    if (e.terminationDate && new Date(e.terminationDate) < new Date()) return false;
+    
+    if (IS_ADMIN_MODE) {
+      const role = DATA.roles.find(r => r.id === e.roleId);
+      return e.role === 'admin' || role?.isAdmin;
+    } else {
+      if (e.role === 'admin') return false;
+      if (centerId && !(e.centerIds || []).includes(centerId)) return false;
+      if (contractorId && e.contractorId !== contractorId) return false;
+      return true;
+    }
+  });
+  
+  filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  filtered.forEach(e => sel.innerHTML += `<option value="${e.id}">${e.name}</option>`);
+  
+  onEmployeeSelected();
+}
+
+function onEmployeeSelected() {
+  const empId = $('selEmployee').value;
+  const emp = DATA.employees.find(e => e.id === empId);
+  
+  if (emp) {
+    // Password ONLY in admin mode — marcaje mode never asks password
+    if (IS_ADMIN_MODE && emp.password) {
+      show('loginPasswordRow');
+    } else {
+      hide('loginPasswordRow');
+    }
+    $('btnLogin').disabled = false;
+  } else {
+    hide('loginPasswordRow');
+    $('btnLogin').disabled = true;
+  }
+  hide('loginError');
+}
+
+async function doLogin() {
+  const empId = $('selEmployee').value;
+  const emp = DATA.employees.find(e => e.id === empId);
+  if (!emp) return;
+  
+  const role = DATA.roles.find(r => r.id === emp.roleId);
+  const isAdmin = emp.role === 'admin' || role?.isAdmin;
+  
+  // Password check ONLY in admin mode
+  if (IS_ADMIN_MODE && emp.password) {
+    if ($('inpPassword').value !== emp.password) {
+      $('loginError').textContent = 'Contraseña incorrecta';
+      show('loginError');
+      return;
+    }
+  }
+  
+  CURRENT_USER = emp;
+  SELECTED_CENTER_ID = $('selCenter').value || null;
+  
+  // Link Firebase UID ONLY when entering as admin (saves 2 writes per employee login)
+  if (UID && IS_ADMIN_MODE && isAdmin) {
+    try {
+      await fbUpdate('employees', emp.id, { firebaseUid: UID });
+    } catch (e) { console.warn('Link UID:', e); }
+    try {
+      await fbSet('admins', UID, {
+        uid: UID,
+        employeeId: emp.id,
+        linkedAt: new Date().toISOString()
+      });
+    } catch (e) { console.warn('Link admin:', e); }
+  }
+  
+  $('headerUser').innerHTML = `<span>${emp.name}</span><button class="btn btn-outline" style="padding:6px 12px;font-size:10px;color:#fff;border-color:rgba(255,255,255,.2)" onclick="doLogout()">Salir</button>`;
+  
+  hide('viewLogin');
+  if (IS_ADMIN_MODE) {
+    showAdminView();
+  } else {
+    showEmployeeView();
+  }
+}
+
+function doLogout() {
+  if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
+  if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
+  $('inpPassword').value = '';
+  showLogin();
+}
+
+// ══════════════════════════════════════
+//  EMPLOYEE VIEW
+// ══════════════════════════════════════
+const POLL_MS = 30000;       // Poll every 30s (was 10s → 3x fewer reads)
+const INACTIVITY_MS = 300000; // Auto-logout after 5 min inactivity
+
+function resetInactivity() {
+  if (INACTIVITY_TIMER) clearTimeout(INACTIVITY_TIMER);
+  INACTIVITY_TIMER = setTimeout(() => {
+    toast('Sesión cerrada por inactividad (5 min)', 'error');
+    doLogout();
+  }, INACTIVITY_MS);
+}
+
+async function showEmployeeView() {
+  show('viewEmployee');
+  const emp = CURRENT_USER;
+  
+  $('empName').textContent = emp.name;
+  const contractor = DATA.contractors.find(c => c.id === emp.contractorId);
+  const role = DATA.roles.find(r => r.id === emp.roleId);
+  $('empContractor').textContent = `Contrata: ${contractor?.name || 'N/A'}`;
+  $('empRole').textContent = `Rol: ${role?.name || 'N/A'}`;
+  $('empShift').textContent = `Turno: ${emp.shift || 'N/A'}`;
+  
+  // Centers
+  const allowed = DATA.centers.filter(c => (emp.centerIds || []).includes(c.id));
+  const cenEl = $('empCenters');
+  cenEl.innerHTML = '';
+  if (allowed.length === 0) {
+    cenEl.innerHTML = '<p class="text-muted text-sm">No hay centros asignados.</p>';
+  } else {
+    allowed.forEach(c => {
+      const sel = SELECTED_CENTER_ID === c.id ? 'selected' : '';
+      cenEl.innerHTML += `<button class="center-btn ${sel}" onclick="selectEmpCenter('${c.id}')" id="cenBtn_${c.id}">
+        <div><div class="font-bold text-sm">${c.name}</div><div class="text-xs text-muted">${c.address}</div></div>
+        ${sel ? '✓' : ''}
+      </button>`;
+    });
+    if (!SELECTED_CENTER_ID && allowed.length > 0) {
+      SELECTED_CENTER_ID = allowed[0].id;
+      showEmployeeView(); return;
+    }
+  }
+  
+  // Load active session
+  await checkActiveSession();
+  
+  // Poll every 30s (NOT 10s) + auto-logout on inactivity
+  if (POLL_INTERVAL) clearInterval(POLL_INTERVAL);
+  POLL_INTERVAL = setInterval(checkActiveSession, POLL_MS);
+  resetInactivity();
+  
+  // Reset inactivity on any interaction
+  ['click', 'touchstart', 'keydown'].forEach(evt => 
+    document.addEventListener(evt, resetInactivity, { passive: true })
+  );
+}
+
+function selectEmpCenter(id) {
+  if (ACTIVE_SESSION) return;
+  SELECTED_CENTER_ID = id;
+  showEmployeeView();
+}
+
+async function checkActiveSession() {
+  try {
+    const results = await fbQuery({
+      from: [{ collectionId: 'attendance' }],
+      where: { compositeFilter: { op: 'AND', filters: [
+        { fieldFilter: { field: { fieldPath: 'employeeId' }, op: 'EQUAL', value: { stringValue: CURRENT_USER.id } } },
+        { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'active' } } }
+      ]}},
+      limit: 1
+    });
+    
+    ACTIVE_SESSION = results[0] || null;
+    updateEmployeeUI();
+  } catch (e) {
+    console.warn('Session check failed:', e.message);
+  }
+}
+
+function updateEmployeeUI() {
+  const btn = $('btnCheckAction');
+  
+  if (ACTIVE_SESSION) {
+    $('empStatusDot').className = 'pulse-dot';
+    $('empStatusText').textContent = 'ACTIVO';
+    $('empCheckInTime').textContent = fmtTime(ACTIVE_SESSION.checkIn);
+    btn.textContent = '⬅ REGISTRAR SALIDA';
+    btn.className = 'btn-giant btn-dark';
+    btn.disabled = false;
+    
+    if (ACTIVE_SESSION.backupRealName) {
+      $('empName').textContent = ACTIVE_SESSION.backupRealName;
+      $('empBackupLabel').textContent = `Backup: ${CURRENT_USER.name}`;
+      show('empBackupBadge');
+    } else {
+      hide('empBackupBadge');
+    }
+    
+    // Disable center selection
+    document.querySelectorAll('.center-btn').forEach(b => b.disabled = true);
+  } else {
+    $('empStatusDot').style.background = '#cbd5e1';
+    $('empStatusDot').className = '';
+    $('empStatusText').textContent = 'INACTIVO';
+    $('empCheckInTime').textContent = '--:--:--';
+    btn.textContent = '➡ REGISTRAR ENTRADA';
+    btn.className = 'btn-giant btn-primary';
+    btn.disabled = !SELECTED_CENTER_ID;
+    hide('empBackupBadge');
+    
+    document.querySelectorAll('.center-btn').forEach(b => b.disabled = false);
+  }
+}
+
+async function handleCheckAction() {
+  if (ACTIVE_SESSION) {
+    await doCheckOut();
+  } else {
+    // Check if backup
+    const isBackup = CURRENT_USER.name.toLowerCase().includes('backup') && (CURRENT_USER.dni || '').toLowerCase() === 'backup';
+    if (isBackup) {
+      $('inpBackupName').value = '';
+      show('modalBackup');
+    } else {
+      await doCheckIn();
+    }
+  }
+}
+
+async function confirmBackup() {
+  const name = $('inpBackupName').value.trim();
+  if (name.length < 3) { toast('Nombre demasiado corto', 'error'); return; }
+  hide('modalBackup');
+  await doCheckIn(name);
+}
+
+async function doCheckIn(backupName) {
+  const center = DATA.centers.find(c => c.id === SELECTED_CENTER_ID);
+  if (!center) { showEmpError('Selecciona un centro.'); return; }
+  
+  $('btnCheckAction').disabled = true;
+  $('btnCheckAction').textContent = '⏳ Obteniendo ubicación...';
+  hide('empError'); hide('empSuccess');
+  
+  try {
+    const pos = await new Promise((res, rej) => {
+      const t = setTimeout(() => rej(new Error('Timeout GPS')), 10000);
+      navigator.geolocation.getCurrentPosition(p => { clearTimeout(t); res(p); }, e => { clearTimeout(t); rej(e); },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    });
+    
+    const dist = calcDist(pos.coords.latitude, pos.coords.longitude, center.latitude, center.longitude);
+    
+    if (dist > center.radius) {
+      throw new Error(`Fuera de rango: ${Math.round(dist)}m del centro "${center.name}". Máximo: ${center.radius}m.`);
+    }
+    
+    const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const record = {
+      id, employeeId: CURRENT_USER.id, employeeName: CURRENT_USER.name,
+      centerId: center.id, latitude: pos.coords.latitude, longitude: pos.coords.longitude,
+      distance: Math.round(dist), checkIn: new Date().toISOString(),
+      checkOut: null, status: 'active'
+    };
+    if (backupName) record.backupRealName = backupName;
+    
+    await fbSet('attendance', id, record);
+    await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: record.checkIn });
+    
+    showEmpSuccess('¡Entrada registrada con éxito!');
+    setTimeout(doLogout, 2500);
+  } catch (e) {
+    showEmpError(e.message);
+    updateEmployeeUI();
+  }
+}
+
+async function doCheckOut() {
+  if (!ACTIVE_SESSION) return;
+  $('btnCheckAction').disabled = true;
+  $('btnCheckAction').textContent = '⏳ Registrando salida...';
+  hide('empError'); hide('empSuccess');
+  
+  try {
+    const now = new Date().toISOString();
+    await fbUpdate('attendance', ACTIVE_SESSION.id, { checkOut: now, status: 'completed' });
+    await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: now });
+    
+    showEmpSuccess('¡Salida registrada con éxito!');
+    setTimeout(doLogout, 2500);
+  } catch (e) {
+    showEmpError(e.message);
+    updateEmployeeUI();
+  }
+}
+
+function showEmpError(msg) { $('empError').textContent = msg; show('empError'); }
+function showEmpSuccess(msg) { $('empSuccess').textContent = msg; show('empSuccess'); }
+
+// ══════════════════════════════════════
+//  ADMIN VIEW
+// ══════════════════════════════════════
+function showAdminView() {
+  show('viewAdmin');
+  
+  // Set default dates
+  const today = todayStr();
+  const monthStart = today.slice(0, 8) + '01';
+  $('dashDateFrom').value = today;
+  $('dashDateTo').value = today;
+  $('rptDateFrom').value = today;
+  $('rptDateTo').value = today;
+  $('kpiDateFrom').value = monthStart;
+  $('kpiDateTo').value = today;
+  
+  // Populate dashboard center filter
+  const dc = $('dashCenter');
+  dc.innerHTML = '<option value="">Todos</option>';
+  DATA.centers.forEach(c => dc.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+  
+  // Populate report filters
+  const rc = $('rptCenter');
+  rc.innerHTML = '<option value="">Todos</option>';
+  DATA.centers.forEach(c => rc.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+  const rt = $('rptContractor');
+  rt.innerHTML = '<option value="">Todas</option>';
+  DATA.contractors.forEach(c => rt.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+  
+  setAdminTab('dashboard');
+}
+
+function setAdminTab(tab) {
+  ['dashboard','reports','kpis','employees','centers','contractors','roles'].forEach(t => {
+    const el = $('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (el) el.classList.toggle('hidden', t !== tab);
+  });
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+  const btns = $('adminTabs').querySelectorAll('.nav-tab');
+  const idx = ['dashboard','reports','kpis','employees','centers','contractors','roles'].indexOf(tab);
+  if (btns[idx]) btns[idx].classList.add('active');
+  
+  // Dashboard: load on first open only, then use cached data
+  if (tab === 'dashboard' && DASH_RECORDS.length === 0) loadDashboard();
+  // Reports & KPIs: only load via "Buscar"/"Calcular" button, never on tab switch
+  // employees/centers/contractors/roles: render from local DATA (no Firebase call)
+  if (tab === 'employees') renderEmployeeTable();
+  if (tab === 'centers') renderCenterTable();
+  if (tab === 'contractors') renderContractorTable();
+  if (tab === 'roles') renderRoleTable();
+}
+
+// ── Quota UI ──
+function updateQuotaUI() {
+  const el = $('statQuota');
+  const bar = $('quotaBar');
+  const card = $('quotaCard');
+  if (!el) return;
+  const pct = Math.min((READS_TODAY / QUOTA_LIMIT) * 100, 100);
+  el.textContent = `${READS_TODAY.toLocaleString()} / ${QUOTA_LIMIT.toLocaleString()}`;
+  bar.style.width = pct + '%';
+  if (pct >= 90) { bar.style.background = 'var(--danger)'; card.style.borderColor = '#fca5a5'; }
+  else if (pct >= 70) { bar.style.background = 'var(--warn)'; card.style.borderColor = '#fcd34d'; }
+  else { bar.style.background = 'var(--success)'; card.style.borderColor = '#e2e8f0'; }
+}
+
+// ── Dashboard ──
+let DASH_RECORDS = [];
+let chartCentersInstance = null;
+
+async function loadDashboard() {
+  const from = $('dashDateFrom').value;
+  const to = $('dashDateTo').value;
+  
+  DASH_RECORDS = await fbQuery({
+    from: [{ collectionId: 'attendance' }],
+    where: { compositeFilter: { op: 'AND', filters: [
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${from}T00:00:00.000Z` } } },
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${to}T23:59:59.999Z` } } }
+    ]}},
+    orderBy: [{ field: { fieldPath: 'checkIn' }, direction: 'ASCENDING' }]
+  });
+  
+  renderDashFromCache();
+}
+
+// Re-renders dashboard from DASH_RECORDS (no Firebase call)
+function renderDashFromCache() {
+  const centerId = $('dashCenter').value;
+  
+  // Stats from ALL records (active + completed)
+  let totalH = 0, extraH = 0, lessH = 0;
+  const empSet = new Set();
+  const activeRecords = [];
+  
+  filtered.forEach(r => {
+    empSet.add(r.employeeId);
+    if (r.status === 'active') activeRecords.push(r);
+    if (r.checkOut) {
+      const h = hoursWorked(r.checkIn, r.checkOut);
+      totalH += h;
+      const emp = DATA.employees.find(e => e.id === r.employeeId);
+      const std = emp?.standardHours || 8;
+      const diff = h - std;
+      if (diff > 0) extraH += diff; else lessH += Math.abs(diff);
+    }
+  });
+  
+  $('statActive').textContent = activeRecords.length;
+  $('statEmployees').textContent = empSet.size;
+  $('statHours').textContent = totalH.toFixed(1) + 'h';
+  $('statExtra').textContent = '+' + extraH.toFixed(1) + 'h';
+  $('statLess').textContent = '-' + lessH.toFixed(1) + 'h';
+  updateQuotaUI();
+  
+  // ── Chart: Horas por Centro ──
+  const centerHours = {};
+  filtered.forEach(r => {
+    if (!r.checkOut) return;
+    const cn = DATA.centers.find(c => c.id === r.centerId)?.name || 'Otro';
+    centerHours[cn] = (centerHours[cn] || 0) + hoursWorked(r.checkIn, r.checkOut);
+  });
+  
+  if (typeof Chart !== 'undefined') {
+    const ctx = $('chartCenters');
+    if (chartCentersInstance) chartCentersInstance.destroy();
+    chartCentersInstance = null;
+    const labels = Object.keys(centerHours);
+    if (labels.length > 0) {
+      const values = Object.values(centerHours).map(v => parseFloat(v.toFixed(1)));
+      const colors = ['#004A99','#059669','#D97706','#DC2626','#7C3AED','#0891B2','#BE185D','#65A30D'];
+      setTimeout(() => {
+        chartCentersInstance = new Chart(ctx, {
+          type: 'bar',
+          data: { labels, datasets: [{ label: 'Horas', data: values, backgroundColor: labels.map((_,i) => colors[i % colors.length]), borderRadius: 6 }] },
+          options: { responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Horas' } } }
+          }
+        });
+      }, 50);
+    }
+  }
+  
+  // ── Table: Only ACTIVE (no checkout) ──
+  const tbody = $('dashTableBody');
+  tbody.innerHTML = '';
+  
+  activeRecords.sort((a, b) => new Date(a.checkIn) - new Date(b.checkIn));
+  
+  const now = new Date();
+  activeRecords.forEach(r => {
+    const center = DATA.centers.find(c => c.id === r.centerId);
+    const emp = DATA.employees.find(e => e.id === r.employeeId);
+    const contractor = DATA.contractors.find(ct => ct.id === emp?.contractorId);
+    const displayName = r.backupRealName ? `${r.employeeName} (${r.backupRealName})` : r.employeeName;
+    const elapsed = ((now - new Date(r.checkIn)) / 3600000).toFixed(1);
+    tbody.innerHTML += `<tr class="active-row">
+      <td class="font-black">${displayName}</td>
+      <td>${center?.name || '-'}</td>
+      <td>${contractor?.name || '-'}</td>
+      <td>${fmtTime(r.checkIn)}</td>
+      <td><span class="badge badge-active">${elapsed}h</span></td>
+      <td>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editRecord('${r.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="deleteRecord('${r.id}')">🗑</button>
+      </td>
+    </tr>`;
+  });
+  
+  if (activeRecords.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted" style="padding:40px">No hay empleados activos ahora</td></tr>';
+  }
+}
+
+function editRecord(id) {
+  const r = DASH_RECORDS.find(x => x.id === id) || RPT_RECORDS.find(x => x.id === id);
+  if (!r) return;
+  
+  const emp = DATA.employees.find(e => e.id === r.employeeId);
+  const center = DATA.centers.find(c => c.id === r.centerId);
+  const ciLocal = r.checkIn ? new Date(r.checkIn).toISOString().slice(0, 16) : '';
+  const coLocal = r.checkOut ? new Date(r.checkOut).toISOString().slice(0, 16) : '';
+  
+  $('modalEditContent').innerHTML = `
+    <h3 class="text-xl font-black mb-2">Editar Registro</h3>
+    <p class="text-muted text-sm mb-4">${emp?.name || r.employeeName} — ${center?.name || '-'}</p>
+    <div class="mb-4">
+      <label class="label">Entrada</label>
+      <input type="datetime-local" class="input" id="editCheckIn" value="${ciLocal}">
+    </div>
+    <div class="mb-4">
+      <label class="label">Salida</label>
+      <input type="datetime-local" class="input" id="editCheckOut" value="${coLocal}">
+    </div>
+    <div class="grid-2 mt-6">
+      <button class="btn btn-danger btn-block" onclick="deleteRecord('${r.id}')">🗑 Borrar</button>
+      <button class="btn btn-primary btn-block" onclick="saveEditRecord('${r.id}')">💾 Guardar</button>
+    </div>
+    <button class="btn btn-outline btn-block mt-2" onclick="closeModal('modalEdit')">Cancelar</button>`;
+  show('modalEdit');
+}
+
+async function saveEditRecord(id) {
+  const ci = $('editCheckIn').value;
+  const co = $('editCheckOut').value;
+  if (!ci) { toast('Entrada requerida', 'error'); return; }
+  
+  const update = {
+    checkIn: new Date(ci).toISOString(),
+    checkOut: co ? new Date(co).toISOString() : null,
+    status: co ? 'completed' : 'active',
+    modifiedBy: CURRENT_USER?.name || 'Admin',
+    modifiedAt: new Date().toISOString()
+  };
+  
+  try {
+    await fbUpdate('attendance', id, update);
+    hide('modalEdit');
+    toast('Registro actualizado');
+    // Reload whichever tab is visible
+    if (!$('tabDashboard').classList.contains('hidden')) loadDashboard();
+    if (!$('tabReports').classList.contains('hidden')) loadReports();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteRecord(id) {
+  if (!confirm('¿Seguro que quieres borrar este registro?')) return;
+  try {
+    await fbDelete('attendance', id);
+    hide('modalEdit');
+    toast('Registro eliminado');
+    if (!$('tabDashboard').classList.contains('hidden')) loadDashboard();
+    if (!$('tabReports').classList.contains('hidden')) loadReports();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── Reports ──
+let RPT_RECORDS = [];
+let RPT_ALL_RECORDS = []; // unfiltered query results
+let RPT_ACTIVE_ONLY = false;
+
+function toggleActiveFilter() {
+  RPT_ACTIVE_ONLY = !RPT_ACTIVE_ONLY;
+  const btn = $('btnRptActive');
+  if (RPT_ACTIVE_ONLY) {
+    btn.style.background = '#059669'; btn.style.color = '#fff'; btn.style.borderColor = '#059669';
+    btn.textContent = '🟢 Activos ON';
+  } else {
+    btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = '';
+    btn.textContent = '🟢 Solo Activos';
+  }
+  renderReportsTable();
+}
+
+async function loadReports() {
+  const from = $('rptDateFrom').value;
+  const to = $('rptDateTo').value;
+  
+  RPT_ALL_RECORDS = await fbQuery({
+    from: [{ collectionId: 'attendance' }],
+    where: { compositeFilter: { op: 'AND', filters: [
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${from}T00:00:00.000Z` } } },
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${to}T23:59:59.999Z` } } }
+    ]}},
+    orderBy: [{ field: { fieldPath: 'checkIn' }, direction: 'ASCENDING' }]
+  });
+  
+  renderReportsTable();
+}
+
+function renderReportsTable() {
+  const centerId = $('rptCenter').value;
+  const contractorId = $('rptContractor').value;
+  
+  let filtered = [...RPT_ALL_RECORDS];
+  if (centerId) filtered = filtered.filter(r => r.centerId === centerId);
+  if (contractorId) filtered = filtered.filter(r => {
+    const emp = DATA.employees.find(e => e.id === r.employeeId);
+    return emp?.contractorId === contractorId;
+  });
+  if (RPT_ACTIVE_ONLY) filtered = filtered.filter(r => r.status === 'active');
+  
+  // Sort: active first, then newest
+  filtered.sort((a, b) => {
+    if (a.status === 'active' && b.status !== 'active') return -1;
+    if (a.status !== 'active' && b.status === 'active') return 1;
+    return new Date(b.checkIn) - new Date(a.checkIn);
+  });
+  
+  RPT_RECORDS = filtered;
+  $('rptCount').textContent = filtered.length;
+  $('rptSelectAll').checked = false;
+  
+  const tbody = $('rptTableBody');
+  tbody.innerHTML = '';
+  const now = new Date();
+  
+  filtered.forEach(r => {
+    const emp = DATA.employees.find(e => e.id === r.employeeId);
+    const center = DATA.centers.find(c => c.id === r.centerId);
+    const contractor = DATA.contractors.find(ct => ct.id === emp?.contractorId);
+    const h = r.checkOut ? hoursWorked(r.checkIn, r.checkOut) : 0;
+    const std = emp?.standardHours || 8;
+    const diff = h - std;
+    const displayName = r.backupRealName ? `${r.employeeName} (${r.backupRealName})` : r.employeeName;
+    const isActive = r.status === 'active';
+    const elapsed = isActive ? ((now - new Date(r.checkIn)) / 3600000).toFixed(1) + 'h' : '';
+    
+    tbody.innerHTML += `<tr class="${isActive ? 'active-row' : ''}">
+      <td><input type="checkbox" class="rpt-check" value="${r.id}" onchange="updateMassBar()"></td>
+      <td><span class="badge ${isActive ? 'badge-active' : 'badge-completed'}">${isActive ? '● Activo' : 'Cerrado'}</span></td>
+      <td>${fmtDate(r.checkIn)}</td><td>${displayName}</td><td>${contractor?.name || '-'}</td><td>${center?.name || '-'}</td>
+      <td>${emp?.shift || '-'}</td><td>${std}h</td>
+      <td>${fmtTime(r.checkIn)}</td><td>${r.checkOut ? fmtTime(r.checkOut) : '<span class="text-warn font-bold">'+elapsed+'</span>'}</td>
+      <td>${h ? h.toFixed(1) + 'h' : '-'}</td>
+      <td class="text-success">${diff > 0 ? '+' + diff.toFixed(1) + 'h' : ''}</td>
+      <td class="text-danger">${diff < 0 ? diff.toFixed(1) + 'h' : ''}</td>
+      <td>
+        <button class="btn btn-outline" style="padding:3px 8px;font-size:10px" onclick="editRecord('${r.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:3px 8px;font-size:10px;color:var(--danger)" onclick="deleteRecordFromReports('${r.id}')">🗑</button>
+      </td>
+    </tr>`;
+  });
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="14" class="text-center text-muted" style="padding:40px">Sin registros</td></tr>';
+  }
+  
+  updateMassBar();
+}
+
+// ── Selection ──
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.rpt-check').forEach(cb => cb.checked = checked);
+  updateMassBar();
+}
+
+function getSelectedIds() {
+  return Array.from(document.querySelectorAll('.rpt-check:checked')).map(cb => cb.value);
+}
+
+function updateMassBar() {
+  const sel = getSelectedIds();
+  if (sel.length > 0) {
+    show('rptMassBar');
+    $('rptSelectedCount').textContent = sel.length + ' seleccionado' + (sel.length > 1 ? 's' : '');
+  } else {
+    hide('rptMassBar');
+  }
+}
+
+function clearSelection() {
+  document.querySelectorAll('.rpt-check').forEach(cb => cb.checked = false);
+  $('rptSelectAll').checked = false;
+  updateMassBar();
+}
+
+// ── Mass Actions ──
+async function massCheckOut() {
+  const ids = getSelectedIds();
+  const activeIds = ids.filter(id => {
+    const r = RPT_RECORDS.find(x => x.id === id);
+    return r && r.status === 'active';
+  });
+  
+  if (activeIds.length === 0) { toast('Ninguno de los seleccionados está activo (sin salida)', 'error'); return; }
+  if (!confirm(`¿Marcar SALIDA a ${activeIds.length} registro(s) activo(s)?\n\nSe registrará la hora actual como salida.`)) return;
+  
+  const now = new Date().toISOString();
+  let ok = 0, fail = 0;
+  
+  for (const id of activeIds) {
+    try {
+      await fbUpdate('attendance', id, {
+        checkOut: now,
+        status: 'completed',
+        modifiedBy: CURRENT_USER?.name || 'Admin',
+        modifiedAt: now
+      });
+      ok++;
+    } catch (e) { fail++; console.error('Mass checkout error:', id, e); }
+  }
+  
+  toast(`Salida masiva: ${ok} OK` + (fail ? `, ${fail} errores` : ''));
+  loadReports();
+}
+
+async function massCheckIn() {
+  const centerOpts = DATA.centers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  const empOpts = DATA.employees
+    .filter(e => e.role !== 'admin' && (!e.terminationDate || new Date(e.terminationDate) >= new Date()))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(e => `<label class="flex items-center gap-2" style="padding:4px 0"><input type="checkbox" class="mass-emp-check" value="${e.id}" data-name="${e.name}"> <span class="text-sm font-bold">${e.name}</span></label>`)
+    .join('');
+  
+  $('modalEditContent').innerHTML = `
+    <h3 class="text-xl font-black mb-2">Entrada Masiva</h3>
+    <p class="text-muted text-sm mb-4">Registra la entrada de varios empleados a la vez en el centro seleccionado (hora actual).</p>
+    <div class="mb-4">
+      <label class="label">Centro</label>
+      <select class="select" id="massCenter">${centerOpts}</select>
+    </div>
+    <div class="mb-4">
+      <label class="label">Empleados</label>
+      <div class="flex items-center gap-2 mb-2">
+        <button class="btn btn-outline text-xs" onclick="document.querySelectorAll('.mass-emp-check').forEach(c=>c.checked=true)">Todo</button>
+        <button class="btn btn-outline text-xs" onclick="document.querySelectorAll('.mass-emp-check').forEach(c=>c.checked=false)">Nada</button>
+      </div>
+      <div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;padding:8px 12px">
+        ${empOpts}
+      </div>
+    </div>
+    <div class="grid-2">
+      <button class="btn btn-outline btn-block" onclick="closeModal('modalEdit')">Cancelar</button>
+      <button class="btn btn-primary btn-block" onclick="executeMassCheckIn()">➡ Registrar Entradas</button>
+    </div>`;
+  show('modalEdit');
+}
+
+async function executeMassCheckIn() {
+  const centerId = $('massCenter').value;
+  const center = DATA.centers.find(c => c.id === centerId);
+  if (!center) { toast('Selecciona un centro', 'error'); return; }
+  
+  const checked = document.querySelectorAll('.mass-emp-check:checked');
+  if (checked.length === 0) { toast('Selecciona al menos un empleado', 'error'); return; }
+  
+  if (!confirm(`¿Registrar ENTRADA de ${checked.length} empleado(s) en "${center.name}"?\n\nSe usará la hora actual.`)) return;
+  
+  const now = new Date().toISOString();
+  let ok = 0, fail = 0;
+  
+  for (const cb of checked) {
+    const empId = cb.value;
+    const empName = cb.dataset.name;
+    const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    try {
+      await fbSet('attendance', id, {
+        id, employeeId: empId, employeeName: empName,
+        centerId: center.id, latitude: center.latitude, longitude: center.longitude,
+        distance: 0, checkIn: now, checkOut: null, status: 'active',
+        massEntry: true, createdBy: CURRENT_USER?.name || 'Admin'
+      });
+      ok++;
+    } catch (e) { fail++; console.error('Mass checkin error:', empId, e); }
+  }
+  
+  hide('modalEdit');
+  toast(`Entrada masiva: ${ok} OK` + (fail ? `, ${fail} errores` : ''));
+  loadReports();
+}
+
+async function deleteRecordFromReports(id) {
+  if (!confirm('¿Seguro que quieres borrar este registro?')) return;
+  try {
+    await fbDelete('attendance', id);
+    toast('Registro eliminado');
+    loadReports();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── KPIs RRHH ──
+let chartKpiEmpsInstance = null;
+let chartKpiDailyInstance = null;
+
+async function loadKPIs() {
+  const from = $('kpiDateFrom').value;
+  const to = $('kpiDateTo').value;
+  
+  const records = await fbQuery({
+    from: [{ collectionId: 'attendance' }],
+    where: { compositeFilter: { op: 'AND', filters: [
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${from}T00:00:00.000Z` } } },
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${to}T23:59:59.999Z` } } }
+    ]}},
+    orderBy: [{ field: { fieldPath: 'checkIn' }, direction: 'ASCENDING' }]
+  });
+  
+  // Active employees (not terminated)
+  const activeEmps = DATA.employees.filter(e => !e.terminationDate || new Date(e.terminationDate) >= new Date());
+  const totalActiveEmps = activeEmps.filter(e => e.role !== 'admin').length;
+  
+  // Days in range
+  const d1 = new Date(from), d2 = new Date(to);
+  const totalDays = Math.max(1, Math.ceil((d2 - d1) / 86400000) + 1);
+  // Working days (exclude weekends)
+  let workDays = 0;
+  for (let d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) workDays++;
+  }
+  workDays = Math.max(workDays, 1);
+  
+  // Compute per-employee stats
+  const empStats = {};
+  let totalH = 0, totalExtra = 0, totalLess = 0;
+  const empDays = {}; // unique days per employee
+  const dailyHours = {}; // date → total hours
+  const contractorStats = {};
+  
+  records.forEach(r => {
+    if (!r.checkOut) return;
+    const h = hoursWorked(r.checkIn, r.checkOut);
+    const emp = DATA.employees.find(e => e.id === r.employeeId);
+    const std = emp?.standardHours || 8;
+    const diff = h - std;
+    
+    totalH += h;
+    if (diff > 0) totalExtra += diff; else totalLess += Math.abs(diff);
+    
+    // Per employee
+    if (!empStats[r.employeeId]) empStats[r.employeeId] = { name: r.employeeName, hours: 0, records: 0, extras: 0, less: 0, late: 0 };
+    empStats[r.employeeId].hours += h;
+    empStats[r.employeeId].records++;
+    if (diff > 0) empStats[r.employeeId].extras += diff;
+    if (diff < 0) empStats[r.employeeId].less += Math.abs(diff);
+    
+    // Track unique days worked
+    const dayKey = fmtDate(r.checkIn);
+    if (!empDays[r.employeeId]) empDays[r.employeeId] = new Set();
+    empDays[r.employeeId].add(dayKey);
+    
+    // Daily hours
+    if (!dailyHours[dayKey]) dailyHours[dayKey] = 0;
+    dailyHours[dayKey] += h;
+    
+    // Contractor stats
+    const conId = emp?.contractorId || '_internal';
+    const conName = DATA.contractors.find(c => c.id === conId)?.name || 'Internos';
+    if (!contractorStats[conId]) contractorStats[conId] = { name: conName, emps: new Set(), records: 0, hours: 0, extras: 0, less: 0 };
+    contractorStats[conId].emps.add(r.employeeId);
+    contractorStats[conId].records++;
+    contractorStats[conId].hours += h;
+    if (diff > 0) contractorStats[conId].extras += diff;
+    if (diff < 0) contractorStats[conId].less += Math.abs(diff);
+  });
+  
+  // Attendance rate: (unique employee-days worked) / (active employees × working days)
+  const totalEmpDays = Object.values(empDays).reduce((s, set) => s + set.size, 0);
+  const attendanceRate = totalActiveEmps > 0 ? Math.min(100, (totalEmpDays / (totalActiveEmps * workDays)) * 100) : 0;
+  
+  // Average hours per day
+  const avgHoursPerDay = Object.keys(dailyHours).length > 0 ? totalH / Object.keys(dailyHours).length : 0;
+  
+  // Punctuality: % records where hours >= standard (within tolerance)
+  let punctualCount = 0;
+  records.forEach(r => {
+    if (!r.checkOut) return;
+    const h = hoursWorked(r.checkIn, r.checkOut);
+    const emp = DATA.employees.find(e => e.id === r.employeeId);
+    const std = emp?.standardHours || 8;
+    if (h >= std - 0.25) punctualCount++;
+  });
+  const completedRecords = records.filter(r => r.checkOut).length;
+  const punctuality = completedRecords > 0 ? (punctualCount / completedRecords) * 100 : 0;
+  
+  // Display KPIs
+  $('kpiActiveEmps').textContent = totalActiveEmps;
+  $('kpiAttendance').textContent = attendanceRate.toFixed(0) + '%';
+  $('kpiAttendance').style.color = attendanceRate >= 80 ? 'var(--success)' : attendanceRate >= 60 ? 'var(--warn)' : 'var(--danger)';
+  $('kpiAvgHours').textContent = avgHoursPerDay.toFixed(1) + 'h';
+  $('kpiPunctuality').textContent = punctuality.toFixed(0) + '%';
+  $('kpiPunctuality').style.color = punctuality >= 85 ? 'var(--success)' : punctuality >= 70 ? 'var(--warn)' : 'var(--danger)';
+  $('kpiTotalExtra').textContent = totalExtra.toFixed(1) + 'h';
+  $('kpiTotalLess').textContent = totalLess.toFixed(1) + 'h';
+  
+  // ── Chart: Horas por Empleado (top 15) ──
+  if (typeof Chart !== 'undefined') {
+    const sortedEmps = Object.values(empStats).sort((a, b) => b.hours - a.hours).slice(0, 15);
+    const ctx1 = $('chartKpiEmps');
+    if (chartKpiEmpsInstance) chartKpiEmpsInstance.destroy();
+    chartKpiEmpsInstance = null;
+    const ctx2 = $('chartKpiDaily');
+    if (chartKpiDailyInstance) chartKpiDailyInstance.destroy();
+    chartKpiDailyInstance = null;
+    
+    setTimeout(() => {
+      if (sortedEmps.length > 0) {
+        chartKpiEmpsInstance = new Chart(ctx1, {
+          type: 'bar',
+          data: {
+            labels: sortedEmps.map(e => e.name.length > 18 ? e.name.slice(0, 16) + '…' : e.name),
+            datasets: [
+              { label: 'Horas', data: sortedEmps.map(e => parseFloat(e.hours.toFixed(1))), backgroundColor: '#004A99', borderRadius: 4 },
+              { label: 'Extras', data: sortedEmps.map(e => parseFloat(e.extras.toFixed(1))), backgroundColor: '#059669', borderRadius: 4 },
+              { label: 'Menos', data: sortedEmps.map(e => parseFloat(e.less.toFixed(1))), backgroundColor: '#DC2626', borderRadius: 4 }
+            ]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false, animation: { duration: 300 }, indexAxis: 'y',
+            plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 10, weight: 'bold' } } } },
+            scales: { x: { beginAtZero: true, stacked: false } }
+          }
+        });
+      }
+      
+      // ── Chart: Evolución diaria ──
+      const dailyKeys = Object.keys(dailyHours).sort();
+      if (dailyKeys.length > 0) {
+        chartKpiDailyInstance = new Chart(ctx2, {
+          type: 'line',
+          data: {
+            labels: dailyKeys,
+            datasets: [{
+              label: 'Horas/Día',
+              data: dailyKeys.map(k => parseFloat(dailyHours[k].toFixed(1))),
+              borderColor: '#004A99', backgroundColor: 'rgba(0,74,153,0.1)',
+              fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#004A99'
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Horas' } } }
+          }
+        });
+      }
+    }, 50);
+  }
+  
+  // ── Table: Resumen por Contrata ──
+  const conBody = $('kpiContractorBody');
+  conBody.innerHTML = '';
+  Object.values(contractorStats).sort((a, b) => b.hours - a.hours).forEach(c => {
+    const avgPerEmp = c.emps.size > 0 ? (c.hours / c.emps.size).toFixed(1) : '0';
+    conBody.innerHTML += `<tr>
+      <td class="font-black">${c.name}</td>
+      <td>${c.emps.size}</td><td>${c.records}</td>
+      <td>${c.hours.toFixed(1)}h</td>
+      <td class="text-success">${c.extras.toFixed(1)}h</td>
+      <td class="text-danger">${c.less.toFixed(1)}h</td>
+      <td>${avgPerEmp}h</td>
+    </tr>`;
+  });
+  if (Object.keys(contractorStats).length === 0) {
+    conBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted" style="padding:30px">Sin datos</td></tr>';
+  }
+}
+
+// ── Employee Management ──
+function renderEmployeeTable() {
+  const search = ($('empSearch')?.value || '').toLowerCase();
+  const filtered = DATA.employees.filter(e => 
+    e.name?.toLowerCase().includes(search) || e.dni?.toLowerCase().includes(search)
+  ).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  
+  $('empCount').textContent = filtered.length;
+  const tbody = $('empTableBody');
+  tbody.innerHTML = '';
+  filtered.forEach(e => {
+    const contractor = DATA.contractors.find(c => c.id === e.contractorId);
+    const role = DATA.roles.find(r => r.id === e.roleId);
+    tbody.innerHTML += `<tr>
+      <td class="font-black">${e.name}</td><td>${e.dni}</td>
+      <td>${contractor?.name || '-'}</td><td>${e.shift || '-'}</td>
+      <td>${role?.name || e.role}</td>
+      <td>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editEmployee('${e.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="removeEmployee('${e.id}')">🗑</button>
+      </td>
+    </tr>`;
+  });
+}
+
+function showEmployeeForm(empId) {
+  const emp = empId ? DATA.employees.find(e => e.id === empId) : null;
+  const isEdit = !!emp;
+  
+  $('modalEditContent').innerHTML = `
+    <h3 class="text-xl font-black mb-4">${isEdit ? 'Editar' : 'Nuevo'} Empleado</h3>
+    <div class="flex flex-col gap-3">
+      <div><label class="label">Nombre</label><input class="input" id="fEmpName" value="${emp?.name || ''}"></div>
+      <div><label class="label">DNI/NIE</label><input class="input" id="fEmpDni" value="${emp?.dni || ''}" ${isEdit ? 'readonly style="opacity:.5"' : ''}></div>
+      <div><label class="label">Contrata</label><select class="select" id="fEmpContractor">
+        <option value="">Sin contrata</option>
+        ${DATA.contractors.map(c => `<option value="${c.id}" ${emp?.contractorId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+      </select></div>
+      <div><label class="label">Rol</label><select class="select" id="fEmpRole">
+        <option value="">Empleado (sin rol)</option>
+        <option value="__admin__" ${emp?.role === 'admin' && !emp?.roleId ? 'selected' : ''}>⭐ Administrador (sistema)</option>
+        ${DATA.roles.map(r => `<option value="${r.id}" ${emp?.roleId === r.id ? 'selected' : ''}>${r.name}${r.isAdmin ? ' (Admin)' : ''}</option>`).join('')}
+      </select></div>
+      <div><label class="label">Turno</label><input class="input" id="fEmpShift" value="${emp?.shift || ''}"></div>
+      <div><label class="label">Área</label><input class="input" id="fEmpArea" value="${emp?.area || ''}"></div>
+      <div><label class="label">Horas Jornada</label><input type="number" class="input" id="fEmpHours" value="${emp?.standardHours || 8}"></div>
+      <div><label class="label">Centros asignados</label>
+        <div class="flex flex-col gap-2" id="fEmpCenters">
+          ${DATA.centers.map(c => `<label class="flex items-center gap-2"><input type="checkbox" value="${c.id}" ${(emp?.centerIds || []).includes(c.id) ? 'checked' : ''}> <span class="text-sm font-bold">${c.name}</span></label>`).join('')}
+        </div>
+      </div>
+      <div><label class="label">Contraseña (solo admin)</label><input type="password" class="input" id="fEmpPass" value="${emp?.password || ''}"></div>
+    </div>
+    <div class="grid-2 mt-6">
+      <button class="btn btn-outline btn-block" onclick="closeModal('modalEdit')">Cancelar</button>
+      <button class="btn btn-primary btn-block" onclick="saveEmployee('${emp?.id || ''}')">Guardar</button>
+    </div>`;
+  show('modalEdit');
+}
+
+function editEmployee(id) { showEmployeeForm(id); }
+
+async function saveEmployee(existingId) {
+  const name = $('fEmpName').value.trim();
+  const dni = $('fEmpDni').value.trim().toUpperCase();
+  if (!name || !dni) { toast('Nombre y DNI requeridos', 'error'); return; }
+  
+  const centerChecks = document.querySelectorAll('#fEmpCenters input[type=checkbox]:checked');
+  const centerIds = Array.from(centerChecks).map(c => c.value);
+  const roleVal = $('fEmpRole').value;
+  const isSystemAdmin = roleVal === '__admin__';
+  const customRole = (!isSystemAdmin && roleVal) ? DATA.roles.find(r => r.id === roleVal) : null;
+  
+  const id = existingId || `emp_${Date.now()}`;
+  const emp = {
+    id, name, dni,
+    contractorId: $('fEmpContractor').value || null,
+    roleId: isSystemAdmin ? null : (roleVal || null),
+    role: isSystemAdmin || customRole?.isAdmin ? 'admin' : 'employee',
+    shift: $('fEmpShift').value || '',
+    area: $('fEmpArea').value || '',
+    standardHours: parseInt($('fEmpHours').value) || 8,
+    centerIds,
+    password: $('fEmpPass').value || null
+  };
+  
+  try {
+    await fbSet('employees', id, emp);
+    // Update local array instead of re-fetching (saves ~50 reads)
+    const idx = DATA.employees.findIndex(e => e.id === id);
+    if (idx >= 0) DATA.employees[idx] = emp; else DATA.employees.push(emp);
+    delete CACHE_TS['employees']; // Invalidate cache for next full load
+    hide('modalEdit');
+    toast(existingId ? 'Empleado actualizado' : 'Empleado creado');
+    renderEmployeeTable();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function removeEmployee(id) {
+  const emp = DATA.employees.find(e => e.id === id);
+  if (!confirm(`¿Eliminar a ${emp?.name}?`)) return;
+  try {
+    await fbDelete('employees', id);
+    DATA.employees = DATA.employees.filter(e => e.id !== id);
+    delete CACHE_TS['employees'];
+    toast('Empleado eliminado');
+    renderEmployeeTable();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── Center Management ──
+function renderCenterTable() {
+  const tbody = $('cenTableBody');
+  tbody.innerHTML = '';
+  DATA.centers.forEach(c => {
+    tbody.innerHTML += `<tr>
+      <td class="font-black">${c.name}</td><td>${c.address}</td>
+      <td>${c.latitude}</td><td>${c.longitude}</td><td>${c.radius}</td>
+      <td>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editCenter('${c.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="removeCenter('${c.id}')">🗑</button>
+      </td>
+    </tr>`;
+  });
+}
+
+function showCenterForm(cId) {
+  const c = cId ? DATA.centers.find(x => x.id === cId) : null;
+  $('modalEditContent').innerHTML = `
+    <h3 class="text-xl font-black mb-4">${c ? 'Editar' : 'Nuevo'} Centro</h3>
+    <div class="flex flex-col gap-3">
+      <div><label class="label">Nombre</label><input class="input" id="fCenName" value="${c?.name || ''}"></div>
+      <div><label class="label">Dirección</label><input class="input" id="fCenAddr" value="${c?.address || ''}"></div>
+      <div class="grid-2">
+        <div><label class="label">Latitud</label><input type="number" step="any" class="input" id="fCenLat" value="${c?.latitude || ''}"></div>
+        <div><label class="label">Longitud</label><input type="number" step="any" class="input" id="fCenLon" value="${c?.longitude || ''}"></div>
+      </div>
+      <div><label class="label">Radio (metros)</label><input type="number" class="input" id="fCenRad" value="${c?.radius || 500}"></div>
+    </div>
+    <div class="grid-2 mt-6">
+      <button class="btn btn-outline btn-block" onclick="closeModal('modalEdit')">Cancelar</button>
+      <button class="btn btn-primary btn-block" onclick="saveCenter('${c?.id || ''}')">Guardar</button>
+    </div>`;
+  show('modalEdit');
+}
+function editCenter(id) { showCenterForm(id); }
+
+async function saveCenter(existingId) {
+  const name = $('fCenName').value.trim();
+  if (!name) { toast('Nombre requerido', 'error'); return; }
+  const id = existingId || `wc_${Date.now()}`;
+  const data = {
+    id, name, address: $('fCenAddr').value,
+    latitude: parseFloat($('fCenLat').value) || 0,
+    longitude: parseFloat($('fCenLon').value) || 0,
+    radius: parseInt($('fCenRad').value) || 500
+  };
+  try {
+    await fbSet('centers', id, data);
+    const idx = DATA.centers.findIndex(c => c.id === id);
+    if (idx >= 0) DATA.centers[idx] = data; else DATA.centers.push(data);
+    delete CACHE_TS['centers'];
+    hide('modalEdit'); toast('Centro guardado');
+    renderCenterTable();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function removeCenter(id) {
+  if (!confirm('¿Eliminar este centro?')) return;
+  try {
+    await fbDelete('centers', id);
+    DATA.centers = DATA.centers.filter(c => c.id !== id);
+    delete CACHE_TS['centers'];
+    toast('Centro eliminado'); renderCenterTable();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── Contractor Management ──
+function renderContractorTable() {
+  const tbody = $('conTableBody');
+  tbody.innerHTML = '';
+  DATA.contractors.forEach(c => {
+    const empCount = DATA.employees.filter(e => e.contractorId === c.id).length;
+    tbody.innerHTML += `<tr>
+      <td class="font-black">${c.name}</td><td>${empCount}</td>
+      <td>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editContractor('${c.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="removeContractor('${c.id}')">🗑</button>
+      </td>
+    </tr>`;
+  });
+}
+
+function showContractorForm(cId) {
+  const c = cId ? DATA.contractors.find(x => x.id === cId) : null;
+  $('modalEditContent').innerHTML = `
+    <h3 class="text-xl font-black mb-4">${c ? 'Editar' : 'Nueva'} Contrata</h3>
+    <div><label class="label">Nombre</label><input class="input" id="fConName" value="${c?.name || ''}"></div>
+    <div class="grid-2 mt-6">
+      <button class="btn btn-outline btn-block" onclick="closeModal('modalEdit')">Cancelar</button>
+      <button class="btn btn-primary btn-block" onclick="saveContractor('${c?.id || ''}')">Guardar</button>
+    </div>`;
+  show('modalEdit');
+}
+function editContractor(id) { showContractorForm(id); }
+
+async function saveContractor(existingId) {
+  const name = $('fConName').value.trim();
+  if (!name) { toast('Nombre requerido', 'error'); return; }
+  const id = existingId || `con_${Date.now()}`;
+  const obj = { id, name };
+  try {
+    await fbSet('contractors', id, obj);
+    const idx = DATA.contractors.findIndex(c => c.id === id);
+    if (idx >= 0) DATA.contractors[idx] = obj; else DATA.contractors.push(obj);
+    delete CACHE_TS['contractors'];
+    hide('modalEdit'); toast('Contrata guardada');
+    renderContractorTable();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function removeContractor(id) {
+  if (!confirm('¿Eliminar esta contrata?')) return;
+  try {
+    await fbDelete('contractors', id);
+    DATA.contractors = DATA.contractors.filter(c => c.id !== id);
+    delete CACHE_TS['contractors'];
+    toast('Contrata eliminada'); renderContractorTable();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── Role Management ──
+function renderRoleTable() {
+  const tbody = $('roleTableBody');
+  tbody.innerHTML = '';
+  DATA.roles.forEach(r => {
+    const empCount = DATA.employees.filter(e => e.roleId === r.id).length;
+    tbody.innerHTML += `<tr>
+      <td class="font-black">${r.name}</td>
+      <td>${r.isAdmin ? '<span class="badge badge-active">Sí</span>' : '<span class="badge badge-completed">No</span>'}</td>
+      <td>${empCount}</td>
+      <td>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editRole('${r.id}')">✏️</button>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="removeRole('${r.id}')">🗑</button>
+      </td>
+    </tr>`;
+  });
+  if (DATA.roles.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted" style="padding:30px">No hay roles definidos</td></tr>';
+  }
+}
+
+function showRoleForm(rId) {
+  const r = rId ? DATA.roles.find(x => x.id === rId) : null;
+  $('modalEditContent').innerHTML = `
+    <h3 class="text-xl font-black mb-4">${r ? 'Editar' : 'Nuevo'} Rol</h3>
+    <div class="flex flex-col gap-3">
+      <div><label class="label">Nombre del Rol</label><input class="input" id="fRoleName" value="${r?.name || ''}"></div>
+      <div>
+        <label class="flex items-center gap-3" style="cursor:pointer">
+          <input type="checkbox" id="fRoleAdmin" ${r?.isAdmin ? 'checked' : ''} style="width:18px;height:18px">
+          <span class="font-bold text-sm">Tiene privilegios de administrador</span>
+        </label>
+      </div>
+    </div>
+    <div class="grid-2 mt-6">
+      <button class="btn btn-outline btn-block" onclick="closeModal('modalEdit')">Cancelar</button>
+      <button class="btn btn-primary btn-block" onclick="saveRole('${r?.id || ''}')">Guardar</button>
+    </div>`;
+  show('modalEdit');
+}
+function editRole(id) { showRoleForm(id); }
+
+async function saveRole(existingId) {
+  const name = $('fRoleName').value.trim();
+  if (!name) { toast('Nombre requerido', 'error'); return; }
+  const id = existingId || `role_${Date.now()}`;
+  const obj = { id, name, isAdmin: $('fRoleAdmin').checked };
+  try {
+    await fbSet('roles', id, obj);
+    const idx = DATA.roles.findIndex(r => r.id === id);
+    if (idx >= 0) DATA.roles[idx] = obj; else DATA.roles.push(obj);
+    delete CACHE_TS['roles'];
+    hide('modalEdit'); toast('Rol guardado');
+    renderRoleTable();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function removeRole(id) {
+  const r = DATA.roles.find(x => x.id === id);
+  const empCount = DATA.employees.filter(e => e.roleId === id).length;
+  if (empCount > 0 && !confirm(`Este rol está asignado a ${empCount} empleado(s). ¿Eliminar igualmente?`)) return;
+  if (empCount === 0 && !confirm(`¿Eliminar el rol "${r?.name}"?`)) return;
+  try {
+    await fbDelete('roles', id);
+    DATA.roles = DATA.roles.filter(x => x.id !== id);
+    delete CACHE_TS['roles'];
+    toast('Rol eliminado'); renderRoleTable();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════
+init();
+</script>
+</body>
+</html>
