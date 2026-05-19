@@ -600,7 +600,7 @@ tr.active-row td { background: #ecfdf5; }
       <input type="text" class="input mb-4" id="empSearch" placeholder="Buscar por nombre o DNI..." oninput="renderEmployeeTable()">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Nombre</th><th>DNI</th><th>Contrata</th><th>Turno</th><th>Rol</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Estado</th><th>Nombre</th><th>DNI</th><th>Contrata</th><th>Turno</th><th>Rol</th><th>Alta</th><th>Baja</th><th>Acciones</th></tr></thead>
           <tbody id="empTableBody"></tbody>
         </table>
       </div>
@@ -1038,6 +1038,8 @@ function filterLoginEmployees() {
       const role = DATA.roles.find(r => r.id === e.roleId);
       return e.role === 'admin' || role?.isAdmin;
     } else {
+      // Marcaje mode: exclude paused employees
+      if (e.paused === true) return false;
       if (e.role === 'admin') return false;
       if (centerId && !(e.centerIds || []).includes(centerId)) return false;
       if (contractorId && e.contractorId !== contractorId) return false;
@@ -1714,7 +1716,7 @@ async function massCheckOut() {
 async function massCheckIn() {
   const centerOpts = DATA.centers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const empOpts = DATA.employees
-    .filter(e => e.role !== 'admin' && (!e.terminationDate || new Date(e.terminationDate) >= new Date()))
+    .filter(e => e.role !== 'admin' && e.paused !== true && (!e.terminationDate || new Date(e.terminationDate) >= new Date()))
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(e => `<label class="flex items-center gap-2" style="padding:4px 0"><input type="checkbox" class="mass-emp-check" value="${e.id}" data-name="${e.name}"> <span class="text-sm font-bold">${e.name}</span></label>`)
     .join('');
@@ -1976,10 +1978,17 @@ function renderEmployeeTable() {
   filtered.forEach(e => {
     const contractor = DATA.contractors.find(c => c.id === e.contractorId);
     const role = DATA.roles.find(r => r.id === e.roleId);
-    tbody.innerHTML += `<tr>
+    const isPaused = e.paused === true;
+    const statusBadge = isPaused 
+      ? '<span class="badge badge-warn">⏸ Pausado</span>' 
+      : '<span class="badge badge-active">✅ Activo</span>';
+    tbody.innerHTML += `<tr style="${isPaused ? 'opacity:.6' : ''}">
+      <td>${statusBadge}</td>
       <td class="font-black">${e.name}</td><td>${e.dni}</td>
       <td>${contractor?.name || '-'}</td><td>${e.shift || '-'}</td>
       <td>${role?.name || e.role}</td>
+      <td>${e.hireDate || '-'}</td>
+      <td>${e.terminationDate || '-'}</td>
       <td>
         <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editEmployee('${e.id}')">✏️</button>
         <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="removeEmployee('${e.id}')">🗑</button>
@@ -1991,12 +2000,31 @@ function renderEmployeeTable() {
 function showEmployeeForm(empId) {
   const emp = empId ? DATA.employees.find(e => e.id === empId) : null;
   const isEdit = !!emp;
+  const todayVal = todayStr();
+  const isPaused = emp?.paused === true;
   
   $('modalEditContent').innerHTML = `
     <h3 class="text-xl font-black mb-4">${isEdit ? 'Editar' : 'Nuevo'} Empleado</h3>
     <div class="flex flex-col gap-3">
       <div><label class="label">Nombre</label><input class="input" id="fEmpName" value="${emp?.name || ''}"></div>
       <div><label class="label">DNI/NIE</label><input class="input" id="fEmpDni" value="${emp?.dni || ''}" ${isEdit ? 'readonly style="opacity:.5"' : ''}></div>
+      <div class="grid-2">
+        <div><label class="label">Fecha de Alta</label><input type="date" class="input" id="fEmpHireDate" value="${emp?.hireDate || todayVal}"></div>
+        <div><label class="label">Fecha de Baja</label><input type="date" class="input" id="fEmpTermDate" value="${emp?.terminationDate || ''}"></div>
+      </div>
+      <div style="padding:12px;border-radius:12px;border:2px solid ${isPaused ? '#DC2626' : '#059669'};background:${isPaused ? '#fef2f2' : '#ecfdf5'}">
+        <label class="flex items-center gap-3" style="cursor:pointer">
+          <input type="checkbox" id="fEmpPaused" ${isPaused ? 'checked' : ''} onchange="
+            const p=this.parentElement.parentElement;
+            if(this.checked){p.style.borderColor='#DC2626';p.style.background='#fef2f2'}
+            else{p.style.borderColor='#059669';p.style.background='#ecfdf5'}
+          " style="width:18px;height:18px;accent-color:#DC2626">
+          <div>
+            <span class="font-black text-sm">${isPaused ? '⏸ PAUSADO' : '✅ ACTIVO'}</span>
+            <div class="text-xs text-muted">Si está pausado, no aparece en el marcaje de entrada</div>
+          </div>
+        </label>
+      </div>
       <div><label class="label">Contrata</label><select class="select" id="fEmpContractor">
         <option value="">Sin contrata</option>
         ${DATA.contractors.map(c => `<option value="${c.id}" ${emp?.contractorId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
@@ -2046,7 +2074,10 @@ async function saveEmployee(existingId) {
     area: $('fEmpArea').value || '',
     standardHours: parseInt($('fEmpHours').value) || 8,
     centerIds,
-    password: $('fEmpPass').value || null
+    password: $('fEmpPass').value || null,
+    hireDate: $('fEmpHireDate').value || null,
+    terminationDate: $('fEmpTermDate').value || null,
+    paused: $('fEmpPaused').checked
   };
   
   try {
