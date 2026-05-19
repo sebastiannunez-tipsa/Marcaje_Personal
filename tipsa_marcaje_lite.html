@@ -777,12 +777,27 @@ async function fbAuth() {
     method: 'POST', body: JSON.stringify({ returnSecureToken: true })
   });
   const d = await r.json();
-  if (d.idToken) { TOKEN = d.idToken; UID = d.localId; return true; }
-  // Try signing in if signUp fails (existing anonymous)
-  const r2 = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${CFG.apiKey}`, {
-    method: 'POST', body: JSON.stringify({ returnSecureToken: true })
-  });
+  if (d.idToken) { TOKEN = d.idToken; UID = d.localId; TOKEN_TS = Date.now(); return true; }
   throw new Error('Auth failed: ' + JSON.stringify(d));
+}
+
+// Auto-refresh token if older than 45 min (expires at 60 min)
+let TOKEN_TS = 0;
+async function ensureToken() {
+  if (!TOKEN || (Date.now() - TOKEN_TS) > 2700000) { // 45 min
+    await fbAuth();
+  }
+}
+
+// Retry wrapper: if 401, refresh token and retry once
+async function fetchWithRetry(url, opts) {
+  await ensureToken();
+  let r = await fetch(url, { ...opts, headers: headers() });
+  if (r.status === 401) {
+    await fbAuth();
+    r = await fetch(url, { ...opts, headers: headers() });
+  }
+  return r;
 }
 
 // Per-collection cache TTLs (ms)
@@ -810,8 +825,8 @@ async function fbGetAll(col) {
     throw new Error('QUOTA_EXCEEDED');
   }
   
-  const r = await fetch(`${FB_QUERY}?key=${CFG.apiKey}`, {
-    method: 'POST', headers: headers(),
+  const r = await fetchWithRetry(`${FB_QUERY}?key=${CFG.apiKey}`, {
+    method: 'POST',
     body: JSON.stringify({ structuredQuery: { from: [{ collectionId: col }], limit: 1000 } })
   });
   if (r.status === 429) {
@@ -843,8 +858,8 @@ async function fbQuery(structuredQuery) {
     return [];
   }
   
-  const r = await fetch(`${FB_QUERY}?key=${CFG.apiKey}`, {
-    method: 'POST', headers: headers(),
+  const r = await fetchWithRetry(`${FB_QUERY}?key=${CFG.apiKey}`, {
+    method: 'POST',
     body: JSON.stringify({ structuredQuery })
   });
   if (r.status === 429) {
@@ -863,8 +878,8 @@ async function fbQuery(structuredQuery) {
 
 async function fbSet(col, id, data) {
   const fields = objToFields(data);
-  const r = await fetch(`${FB_BASE}/${col}/${id}?key=${CFG.apiKey}`, {
-    method: 'PATCH', headers: headers(),
+  const r = await fetchWithRetry(`${FB_BASE}/${col}/${id}?key=${CFG.apiKey}`, {
+    method: 'PATCH',
     body: JSON.stringify({ fields })
   });
   if (!r.ok) throw new Error(`Write failed: ${r.status}`);
@@ -876,8 +891,8 @@ async function fbSet(col, id, data) {
 async function fbUpdate(col, id, data) {
   const fields = objToFields(data);
   const masks = Object.keys(data).map(k => `updateMask.fieldPaths=${k}`).join('&');
-  const r = await fetch(`${FB_BASE}/${col}/${id}?${masks}&key=${CFG.apiKey}`, {
-    method: 'PATCH', headers: headers(),
+  const r = await fetchWithRetry(`${FB_BASE}/${col}/${id}?${masks}&key=${CFG.apiKey}`, {
+    method: 'PATCH',
     body: JSON.stringify({ fields })
   });
   if (!r.ok) throw new Error(`Update failed: ${r.status}`);
@@ -885,8 +900,8 @@ async function fbUpdate(col, id, data) {
 }
 
 async function fbDelete(col, id) {
-  const r = await fetch(`${FB_BASE}/${col}/${id}?key=${CFG.apiKey}`, {
-    method: 'DELETE', headers: headers()
+  const r = await fetchWithRetry(`${FB_BASE}/${col}/${id}?key=${CFG.apiKey}`, {
+    method: 'DELETE'
   });
   if (!r.ok) throw new Error(`Delete failed: ${r.status}`);
   delete CACHE_TS[col];
