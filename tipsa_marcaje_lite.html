@@ -1828,6 +1828,204 @@ async function deleteRecordFromReports(id) {
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
+// ══════════════════════════════════════
+//  EXPORT FUNCTIONS
+// ══════════════════════════════════════
+
+function buildExportData() {
+  return RPT_RECORDS.map(r => {
+    const emp = DATA.employees.find(e => e.id === r.employeeId);
+    const center = DATA.centers.find(c => c.id === r.centerId);
+    const contractor = DATA.contractors.find(ct => ct.id === emp?.contractorId);
+    const h = r.checkOut ? hoursWorked(r.checkIn, r.checkOut) : 0;
+    const std = emp?.standardHours || 8;
+    const diff = h - std;
+    const displayName = r.backupRealName ? `${r.employeeName} (${r.backupRealName})` : r.employeeName;
+    return {
+      fecha: fmtDate(r.checkIn), empleado: displayName,
+      contrata: contractor?.name || '-', centro: center?.name || '-',
+      turno: emp?.shift || '-', jornada: std,
+      entrada: fmtTime(r.checkIn), salida: r.checkOut ? fmtTime(r.checkOut) : 'En curso',
+      horas: h ? parseFloat(h.toFixed(1)) : 0,
+      extras: diff > 0 ? parseFloat(diff.toFixed(1)) : 0,
+      menos: diff < 0 ? parseFloat(Math.abs(diff).toFixed(1)) : 0
+    };
+  });
+}
+
+function getFilterLabels() {
+  const centerName = $('rptCenter').value ? DATA.centers.find(c => c.id === $('rptCenter').value)?.name : 'TODOS';
+  const contractorName = $('rptContractor').value ? DATA.contractors.find(c => c.id === $('rptContractor').value)?.name : 'TODAS';
+  return { centerName, contractorName, from: $('rptDateFrom').value, to: $('rptDateTo').value };
+}
+
+// ── CSV ──
+function exportCSV() {
+  if (RPT_RECORDS.length === 0) { toast('No hay datos para exportar', 'error'); return; }
+  const rows = buildExportData();
+  let csv = 'Fecha;Empleado;Contrata;Centro;Turno;Jornada;Entrada;Salida;Horas;Extras;Menos\n';
+  rows.forEach(r => {
+    csv += `${r.fecha};"${r.empleado}";"${r.contrata}";"${r.centro}";"${r.turno}";${r.jornada};${r.entrada};${r.salida};${r.horas};${r.extras};${r.menos}\n`;
+  });
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  toast('CSV generado');
+}
+
+// ── Excel ──
+function exportExcel() {
+  if (RPT_RECORDS.length === 0) { toast('No hay datos para exportar', 'error'); return; }
+  if (typeof XLSX === 'undefined') { toast('Libreria Excel no cargada. Recarga la pagina.', 'error'); return; }
+  const rows = buildExportData();
+  const f = getFilterLabels();
+
+  const headerRows = [
+    ['TIPSA - INFORME DE ASISTENCIA'],
+    ['Periodo: ' + f.from + ' al ' + f.to, '', 'Centro: ' + f.centerName, '', 'Contrata: ' + f.contractorName],
+    ['Generado: ' + new Date().toLocaleString('es-ES')],
+    []
+  ];
+  const colHeaders = ['Fecha', 'Empleado', 'Contrata', 'Centro', 'Turno', 'Jornada', 'Entrada', 'Salida', 'Horas', 'Extras', 'Menos'];
+  const dataRows = rows.map(r => [r.fecha, r.empleado, r.contrata, r.centro, r.turno, r.jornada, r.entrada, r.salida, r.horas, r.extras, r.menos]);
+
+  const totalH = rows.reduce((s, r) => s + r.horas, 0);
+  const totalExtra = rows.reduce((s, r) => s + r.extras, 0);
+  const totalMenos = rows.reduce((s, r) => s + r.menos, 0);
+  const summaryRows = [[], ['RESUMEN'], ['Registros', rows.length, '', 'Empleados', new Set(rows.map(r => r.empleado)).size, '', '', 'Total Horas', totalH.toFixed(1), totalExtra.toFixed(1), totalMenos.toFixed(1)]];
+
+  const allRows = [...headerRows, colHeaders, ...dataRows, ...summaryRows];
+  const ws = XLSX.utils.aoa_to_sheet(allRows);
+  ws['!cols'] = [{wch:12},{wch:28},{wch:18},{wch:22},{wch:14},{wch:9},{wch:10},{wch:10},{wch:8},{wch:8},{wch:8}];
+  ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:10} }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Asistencias');
+
+  // Generate and open in browser
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  // Also offer download
+  const a = document.createElement('a'); a.href = url;
+  a.download = 'informe_tipsa_' + f.from + '_' + f.to + '.xlsx';
+  a.click();
+  toast('Excel generado');
+}
+
+// ── PDF (vertical, paginado, encabezados en cada pagina) ──
+function exportPDF() {
+  if (RPT_RECORDS.length === 0) { toast('No hay datos para exportar', 'error'); return; }
+  if (!window.jspdf) { toast('Libreria PDF no cargada. Recarga la pagina.', 'error'); return; }
+
+  try {
+  const rows = buildExportData();
+  const f = getFilterLabels();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  // Header first page
+  doc.setFillColor(0, 74, 153);
+  doc.rect(0, 0, 210, 38, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.text('TIPSA', 14, 16);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  doc.text('SISTEMA DE CONTROL HORARIO', 14, 24);
+  doc.setFontSize(8);
+  doc.text('INFORME DE ASISTENCIA: ' + f.from + ' al ' + f.to, 14, 31);
+  doc.text('CENTRO: ' + f.centerName + '  |  CONTRATA: ' + f.contractorName, 14, 36);
+
+  // Summary stats
+  const totalH = rows.reduce((s, r) => s + r.horas, 0);
+  const totalExtra = rows.reduce((s, r) => s + r.extras, 0);
+  const totalMenos = rows.reduce((s, r) => s + r.menos, 0);
+  const uniqueEmps = new Set(rows.map(r => r.empleado)).size;
+  const statsY = 44;
+  doc.setTextColor(0, 0, 0);
+  doc.setFillColor(245, 247, 250);
+  doc.roundedRect(14, statsY, 182, 14, 2, 2, 'F');
+  doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(100, 116, 139);
+  doc.text('REGISTROS', 18, statsY + 5);
+  doc.text('EMPLEADOS', 55, statsY + 5);
+  doc.text('TOTAL HORAS', 92, statsY + 5);
+  doc.text('H. EXTRAS', 132, statsY + 5);
+  doc.text('H. MENOS', 166, statsY + 5);
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
+  doc.text(String(rows.length), 18, statsY + 11);
+  doc.text(String(uniqueEmps), 55, statsY + 11);
+  doc.text(totalH.toFixed(1) + 'h', 92, statsY + 11);
+  doc.setTextColor(5, 150, 105);
+  doc.text('+' + totalExtra.toFixed(1) + 'h', 132, statsY + 11);
+  doc.setTextColor(220, 38, 38);
+  doc.text('-' + totalMenos.toFixed(1) + 'h', 166, statsY + 11);
+
+  // Table
+  const tableData = rows.map(r => [
+    r.fecha, r.empleado, r.contrata, r.centro, r.turno,
+    r.jornada + 'h', r.entrada, r.salida,
+    r.horas.toFixed(1) + 'h',
+    r.extras > 0 ? '+' + r.extras.toFixed(1) : '',
+    r.menos > 0 ? '-' + r.menos.toFixed(1) : ''
+  ]);
+
+  doc.autoTable({
+    head: [['Fecha', 'Empleado', 'Contrata', 'Centro', 'Turno', 'Jorn.', 'Entrada', 'Salida', 'Horas', 'Extras', 'Menos']],
+    body: tableData,
+    startY: statsY + 18,
+    theme: 'grid',
+    styles: { font: 'helvetica', fontSize: 6.5, cellPadding: 2, lineColor: [226,232,240], lineWidth: 0.2, textColor: [15,23,42], valign: 'middle' },
+    headStyles: { fillColor: [0,74,153], textColor: [255,255,255], fontStyle: 'bold', fontSize: 6.5, halign: 'center', cellPadding: 3 },
+    alternateRowStyles: { fillColor: [248,250,252] },
+    columnStyles: {
+      0: { halign:'center', cellWidth:16 },
+      1: { cellWidth:30 },
+      2: { cellWidth:20 },
+      3: { cellWidth:24 },
+      4: { halign:'center', cellWidth:16 },
+      5: { halign:'center', cellWidth:10 },
+      6: { halign:'center', cellWidth:14 },
+      7: { halign:'center', cellWidth:14 },
+      8: { halign:'center', cellWidth:12, fontStyle:'bold' },
+      9: { halign:'center', cellWidth:12, textColor:[5,150,105], fontStyle:'bold' },
+      10: { halign:'center', cellWidth:12, textColor:[220,38,38], fontStyle:'bold' }
+    },
+    margin: { top: 14, right: 10, bottom: 18, left: 10 },
+    showHead: 'everyPage',
+    didDrawPage: function(data) {
+      const currentPage = doc.internal.getCurrentPageInfo().pageNumber;
+      if (currentPage > 1) {
+        doc.setFillColor(0, 74, 153);
+        doc.rect(0, 0, 210, 10, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+        doc.text('TIPSA — Informe Asistencia  |  ' + f.from + ' al ' + f.to + '  |  Centro: ' + f.centerName + '  |  Contrata: ' + f.contractorName, 10, 7);
+      }
+    }
+  });
+
+  // Footer with page numbers
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 286, 210, 12, 'F');
+    doc.setFontSize(7); doc.setTextColor(150, 150, 150); doc.setFont('helvetica', 'normal');
+    doc.text('Pagina ' + i + ' de ' + totalPages + '  —  Generado: ' + new Date().toLocaleString('es-ES') + '  —  TIPSA Control Horario', 105, 290, { align: 'center' });
+  }
+
+  // Open in browser instead of just downloading
+  const pdfBlob = doc.output('blob');
+  const pdfUrl = URL.createObjectURL(pdfBlob);
+  window.open(pdfUrl, '_blank');
+  toast('PDF generado');
+
+  } catch (e) { console.error('Error PDF:', e); toast('Error generando PDF: ' + e.message, 'error'); }
+}
+
 // ── KPIs RRHH ──
 let chartKpiEmpsInstance = null;
 let chartKpiDailyInstance = null;
