@@ -1229,18 +1229,44 @@ function selectEmpCenter(id) {
 
 async function checkActiveSession() {
   try {
-    // Single-field filter only (composite filters can fail without index)
-    const results = await fbQuery({
+    // Primary: filter by employeeId
+    let results = await fbQuery({
       from: [{ collectionId: 'attendance' }],
       where: { fieldFilter: { field: { fieldPath: 'employeeId' }, op: 'EQUAL', value: { stringValue: CURRENT_USER.id } } },
-      limit: 20
+      limit: 30
     });
     
-    // Filter for active status client-side
-    ACTIVE_SESSION = results.find(r => r.status === 'active') || null;
+    // If query returned empty (could be 403/rate-limit), try fallback:
+    // get recent attendance and filter client-side
+    if (results.length === 0 && ACTIVE_SESSION === null) {
+      const today = todayStr();
+      results = await fbQuery({
+        from: [{ collectionId: 'attendance' }],
+        where: { compositeFilter: { op: 'AND', filters: [
+          { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${today}T00:00:00.000Z` } } },
+          { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${today}T23:59:59.999Z` } } }
+        ]}}
+      });
+      // Filter client-side for this employee
+      results = results.filter(r => r.employeeId === CURRENT_USER.id);
+    }
+    
+    const found = results.find(r => r.status === 'active') || null;
+    
+    // CRITICAL: Only update ACTIVE_SESSION if we got real results
+    // If both queries returned 0 results, keep the existing ACTIVE_SESSION
+    // (it might be from a successful earlier check)
+    if (results.length > 0 || found) {
+      ACTIVE_SESSION = found;
+    }
+    // If results.length === 0 AND we already have an ACTIVE_SESSION, keep it
+    // (the query probably failed due to rate limiting)
+    
     updateEmployeeUI();
   } catch (e) {
     console.warn('Session check failed:', e.message);
+    // DON'T clear ACTIVE_SESSION on error — keep previous state
+    updateEmployeeUI();
   }
 }
 
@@ -1334,8 +1360,10 @@ async function doCheckIn(backupName) {
     await fbSet('attendance', id, record);
     await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: record.checkIn });
     
-    showEmpSuccess('¡Entrada registrada con éxito!');
-    setTimeout(doLogout, 2500);
+    // Set active session immediately so UI shows SALIDA button
+    ACTIVE_SESSION = record;
+    updateEmployeeUI();
+    showEmpSuccess('¡Entrada registrada con éxito! Ya puedes registrar la salida.');
   } catch (e) {
     showEmpError(e.message);
     updateEmployeeUI();
