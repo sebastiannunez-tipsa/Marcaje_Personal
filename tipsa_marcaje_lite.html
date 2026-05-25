@@ -1422,20 +1422,17 @@ async function doCheckIn(backupName) {
     await fbSet('attendance', id, record);
     await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: record.checkIn });
     
-    // Cancel any existing timers to prevent conflicts
+    // Cancel any existing timers
     if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
     if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
     
-    // Show success and force logout
     $('btnCheckAction').disabled = true;
     $('btnCheckAction').textContent = '✅ ENTRADA REGISTRADA';
     $('btnCheckAction').className = 'btn-giant btn-success';
-    showEmpSuccess('✅ Entrada registrada. Volviendo en 2s...');
+    showEmpSuccess('✅ Entrada registrada. Volviendo al inicio...');
     
-    // Force return to login - use multiple safeguards
-    setTimeout(() => { try { doLogout(); } catch(e) { location.reload(); } }, 2000);
-    // Backup: if for any reason doLogout doesn't fire in 4s, force reload
-    setTimeout(() => { if ($('viewEmployee') && !$('viewEmployee').classList.contains('hidden')) location.reload(); }, 4000);
+    // Force full page reload to return to login (bulletproof)
+    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 1500);
   } catch (e) {
     showEmpError(e.message);
     updateEmployeeUI();
@@ -1453,17 +1450,15 @@ async function doCheckOut() {
     await fbUpdate('attendance', ACTIVE_SESSION.id, { checkOut: now, status: 'completed' });
     await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: now });
     
-    // Cancel any existing timers
     if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
     if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
     
     $('btnCheckAction').disabled = true;
     $('btnCheckAction').textContent = '✅ SALIDA REGISTRADA';
     $('btnCheckAction').className = 'btn-giant btn-success';
-    showEmpSuccess('✅ Salida registrada. Volviendo en 2s...');
+    showEmpSuccess('✅ Salida registrada. Volviendo al inicio...');
     
-    setTimeout(() => { try { doLogout(); } catch(e) { location.reload(); } }, 2000);
-    setTimeout(() => { if ($('viewEmployee') && !$('viewEmployee').classList.contains('hidden')) location.reload(); }, 4000);
+    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 1500);
   } catch (e) {
     showEmpError(e.message);
     updateEmployeeUI();
