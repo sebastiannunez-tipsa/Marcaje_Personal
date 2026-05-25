@@ -977,6 +977,32 @@ function closeModal(id) { hide(id); }
 //  INIT
 // ══════════════════════════════════════
 async function init() {
+  // Block file:// protocol - browsers block cross-origin requests from local files
+  if (location.protocol === 'file:') {
+    hide('viewLoading');
+    document.body.innerHTML = `
+      <div class="header">
+        <div class="header-brand">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8m-4-4h8"/></svg>
+          <div><h1>TIPSA CONTROL HORARIO</h1><span>Versión Lite</span></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;min-height:80vh;padding:24px">
+        <div class="card text-center" style="max-width:460px">
+          <div style="font-size:48px;margin-bottom:16px">🚫</div>
+          <h2 class="text-xl font-black mb-2">No se puede abrir desde archivo local</h2>
+          <p class="text-muted text-sm mb-4">Los navegadores bloquean las conexiones a Firebase desde <code>file://</code>. Esta aplicación debe ejecutarse desde un servidor web.</p>
+          <div class="card-sm text-left mb-4" style="background:#f8fafc">
+            <p class="font-bold text-sm mb-2">Opciones:</p>
+            <p class="text-xs text-muted mb-2">1. <strong>Subir a Google Storage</strong> y abrir desde la URL https://</p>
+            <p class="text-xs text-muted mb-2">2. <strong>Servidor local</strong>: abrir terminal en la carpeta del archivo y ejecutar:<br><code style="background:#e2e8f0;padding:2px 6px;border-radius:4px;font-size:11px">python -m http.server 8080</code><br>Luego abrir <code>http://localhost:8080</code></p>
+          </div>
+          <a href="https://storage.googleapis.com/programa_marcaje_claude/tipsa_marcaje_lite.html" class="btn btn-primary btn-block">Ir a la versión online →</a>
+        </div>
+      </div>`;
+    return;
+  }
+  
   try {
     await fbAuth();
     DATA.employees = await fbGetAll('employees');
