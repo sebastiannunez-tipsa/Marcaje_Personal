@@ -1,13 +1,125 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title> TIPSA CONTROL HORARIO </title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIPSA Control Horario</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,700;9..40,900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'DM Sans',system-ui,sans-serif;
+  background:#F4F6F9;
+  min-height:100dvh;
+  display:flex;flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+}
+.header{
+  background:#0A1628;
+  padding:14px 24px;
+  display:flex;align-items:center;gap:12px;
+}
+.header svg{width:28px;height:28px}
+.header h1{font-size:16px;font-weight:900;color:#fff;letter-spacing:-.02em}
+.header span{font-size:10px;color:rgba(255,255,255,.45);font-weight:700;text-transform:uppercase;letter-spacing:.1em}
+.main{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  padding:24px;
+}
+.card{
+  background:#fff;
+  border:1px solid #E2E8F0;
+  border-radius:24px;
+  padding:48px 40px;
+  max-width:520px;width:100%;
+  text-align:center;
+  box-shadow:0 8px 40px rgba(10,22,40,.06);
+}
+.icon-wrap{
+  width:72px;height:72px;border-radius:20px;
+  background:#FEF3C7;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 24px;
+}
+.badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 16px;border-radius:99px;
+  background:#FEF2F2;color:#DC2626;
+  font-size:11px;font-weight:900;
+  text-transform:uppercase;letter-spacing:.08em;
+  margin-bottom:20px;
+}
+.badge::before{
+  content:'';width:8px;height:8px;border-radius:50%;
+  background:#DC2626;
+}
+h2{
+  font-size:26px;font-weight:900;color:#0F172A;
+  letter-spacing:-.02em;margin-bottom:8px;
+}
+.sub{
+  font-size:14px;color:#64748B;font-weight:400;
+  line-height:1.6;margin-bottom:32px;
+}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;padding:20px 32px;
+  border-radius:16px;border:none;
+  background:#004A99;color:#fff;
+  font-family:inherit;font-size:15px;font-weight:900;
+  text-transform:uppercase;letter-spacing:.06em;
+  text-decoration:none;
+  cursor:pointer;transition:all .2s;
+  box-shadow:0 6px 24px rgba(0,74,153,.25);
+}
+.btn:hover{background:#003d80;transform:translateY(-1px);box-shadow:0 8px 32px rgba(0,74,153,.3)}
+.btn:active{transform:scale(.98)}
+.btn svg{width:20px;height:20px;flex-shrink:0}
+.footer{
+  text-align:center;padding:16px;
+  font-size:10px;font-weight:700;color:#94A3B8;
+  text-transform:uppercase;letter-spacing:.1em;
+}
+@media(max-width:480px){
+  .card{padding:32px 24px;border-radius:20px}
+  h2{font-size:22px}
+  .btn{padding:18px 24px;font-size:14px}
+}
+</style>
+</head>
+<body>
 
+<div class="header">
+  <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8m-4-4h8"/></svg>
+  <div>
+    <h1>TIPSA CONTROL HORARIO</h1>
+    <span>Sistema de Gestión de Marcajes</span>
+  </div>
+</div>
+
+<div class="main">
+  <div class="card">
+    <div class="icon-wrap">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+    </div>
+
+    <div class="badge">Página Inactiva</div>
+
+    <h2>Esta página ya no está en uso</h2>
+    <p class="sub">El sistema de marcajes se ha trasladado a una nueva ubicación. Pulsa el botón para acceder a la aplicación actualizada.</p>
+
+    <a href="https://storage.googleapis.com/programa_marcaje_claude/tipsa_marcaje_lite.html" class="btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+      Ir a Marcajes
+    </a>
+  </div>
+</div>
+
+<div class="footer">TIPSA · Grupo Geopost · Control Horario</div>
+
+</body>
+</html>
