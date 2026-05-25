@@ -1229,16 +1229,15 @@ function selectEmpCenter(id) {
 
 async function checkActiveSession() {
   try {
+    // Single-field filter only (composite filters can fail without index)
     const results = await fbQuery({
       from: [{ collectionId: 'attendance' }],
-      where: { compositeFilter: { op: 'AND', filters: [
-        { fieldFilter: { field: { fieldPath: 'employeeId' }, op: 'EQUAL', value: { stringValue: CURRENT_USER.id } } },
-        { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'active' } } }
-      ]}},
-      limit: 1
+      where: { fieldFilter: { field: { fieldPath: 'employeeId' }, op: 'EQUAL', value: { stringValue: CURRENT_USER.id } } },
+      limit: 20
     });
     
-    ACTIVE_SESSION = results[0] || null;
+    // Filter for active status client-side
+    ACTIVE_SESSION = results.find(r => r.status === 'active') || null;
     updateEmployeeUI();
   } catch (e) {
     console.warn('Session check failed:', e.message);
@@ -1444,8 +1443,7 @@ async function loadDashboard() {
     where: { compositeFilter: { op: 'AND', filters: [
       { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${from}T00:00:00.000Z` } } },
       { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${to}T23:59:59.999Z` } } }
-    ]}},
-    orderBy: [{ field: { fieldPath: 'checkIn' }, direction: 'ASCENDING' }]
+    ]}}
   });
   
   renderDashFromCache();
@@ -1659,8 +1657,7 @@ async function loadReports() {
     where: { compositeFilter: { op: 'AND', filters: [
       { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${from}T00:00:00.000Z` } } },
       { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${to}T23:59:59.999Z` } } }
-    ]}},
-    orderBy: [{ field: { fieldPath: 'checkIn' }, direction: 'ASCENDING' }]
+    ]}}
   });
   
   RPT_PAGE = 0;
@@ -2143,8 +2140,7 @@ async function loadKPIs() {
     where: { compositeFilter: { op: 'AND', filters: [
       { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${from}T00:00:00.000Z` } } },
       { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${to}T23:59:59.999Z` } } }
-    ]}},
-    orderBy: [{ field: { fieldPath: 'checkIn' }, direction: 'ASCENDING' }]
+    ]}}
   });
   
   // Active employees (not terminated)
