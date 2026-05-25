@@ -489,11 +489,11 @@ tr.active-row td { background: #ecfdf5; }
     <div class="card mb-4">
       <div class="flex gap-3" style="flex-wrap:wrap;align-items:end">
         <div style="flex:1;min-width:120px">
-          <label class="label">Desde</label>
+          <label class="label">Desde Fecha</label>
           <input type="date" class="input" id="rptDateFrom">
         </div>
         <div style="flex:1;min-width:120px">
-          <label class="label">Hasta</label>
+          <label class="label">Hasta Fecha</label>
           <input type="date" class="input" id="rptDateTo">
         </div>
         <div style="flex:1;min-width:140px">
@@ -504,8 +504,19 @@ tr.active-row td { background: #ecfdf5; }
           <label class="label">Contrata</label>
           <select class="select" id="rptContractor"><option value="">Todas</option></select>
         </div>
+      </div>
+      <div class="flex gap-3 mt-3" style="flex-wrap:wrap;align-items:end">
+        <div style="min-width:100px">
+          <label class="label">Desde Hora Entrada</label>
+          <input type="time" class="input" id="rptHourFrom" value="">
+        </div>
+        <div style="min-width:100px">
+          <label class="label">Hasta Hora Salida</label>
+          <input type="time" class="input" id="rptHourTo" value="">
+        </div>
         <button class="btn btn-primary" onclick="loadReports()">Buscar</button>
         <button class="btn btn-outline" id="btnRptActive" onclick="toggleActiveFilter()" title="Filtrar solo activos (sin salida)" style="white-space:nowrap">🟢 Solo Activos</button>
+        <button class="btn btn-outline text-xs" onclick="clearHourFilters()" title="Limpiar filtros horarios">✖ Limpiar horas</button>
       </div>
     </div>
     <!-- Mass action bar (hidden by default) -->
@@ -1649,9 +1660,18 @@ function rptChangePage(delta) {
   renderReportsTable();
 }
 
+function clearHourFilters() {
+  $('rptHourFrom').value = '';
+  $('rptHourTo').value = '';
+  RPT_PAGE = 0;
+  renderReportsTable();
+}
+
 function renderReportsTable() {
   const centerId = $('rptCenter').value;
   const contractorId = $('rptContractor').value;
+  const hourFrom = $('rptHourFrom').value; // "HH:MM" or ""
+  const hourTo = $('rptHourTo').value;
   
   let filtered = [...RPT_ALL_RECORDS];
   if (centerId) filtered = filtered.filter(r => r.centerId === centerId);
@@ -1660,6 +1680,23 @@ function renderReportsTable() {
     return emp?.contractorId === contractorId;
   });
   if (RPT_ACTIVE_ONLY) filtered = filtered.filter(r => r.status === 'active');
+  
+  // Hour range filter
+  if (hourFrom) {
+    filtered = filtered.filter(r => {
+      const t = new Date(r.checkIn);
+      const hhmm = String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0');
+      return hhmm >= hourFrom;
+    });
+  }
+  if (hourTo) {
+    filtered = filtered.filter(r => {
+      if (!r.checkOut) return true; // active records pass through
+      const t = new Date(r.checkOut);
+      const hhmm = String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0');
+      return hhmm <= hourTo;
+    });
+  }
   
   // Sort: active first, then newest
   filtered.sort((a, b) => {
@@ -1891,7 +1928,10 @@ function buildExportData() {
 function getFilterLabels() {
   const centerName = $('rptCenter').value ? DATA.centers.find(c => c.id === $('rptCenter').value)?.name : 'TODOS';
   const contractorName = $('rptContractor').value ? DATA.contractors.find(c => c.id === $('rptContractor').value)?.name : 'TODAS';
-  return { centerName, contractorName, from: $('rptDateFrom').value, to: $('rptDateTo').value };
+  const hourFrom = $('rptHourFrom').value || '';
+  const hourTo = $('rptHourTo').value || '';
+  const hourLabel = (hourFrom || hourTo) ? `Horario: ${hourFrom || '00:00'} – ${hourTo || '23:59'}` : '';
+  return { centerName, contractorName, from: $('rptDateFrom').value, to: $('rptDateTo').value, hourFrom, hourTo, hourLabel };
 }
 
 // ── CSV ──
@@ -1917,7 +1957,7 @@ function exportExcel() {
 
   const headerRows = [
     ['TIPSA - INFORME DE ASISTENCIA'],
-    ['Periodo: ' + f.from + ' al ' + f.to, '', 'Centro: ' + f.centerName, '', 'Contrata: ' + f.contractorName],
+    ['Periodo: ' + f.from + ' al ' + f.to, '', 'Centro: ' + f.centerName, '', 'Contrata: ' + f.contractorName, '', f.hourLabel],
     ['Generado: ' + new Date().toLocaleString('es-ES')],
     []
   ];
@@ -1962,7 +2002,8 @@ function exportPDF() {
 
   // Header first page
   doc.setFillColor(0, 74, 153);
-  doc.rect(0, 0, 210, 38, 'F');
+  const hasHourFilter = f.hourFrom || f.hourTo;
+  doc.rect(0, 0, 210, hasHourFilter ? 42 : 38, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
@@ -1972,14 +2013,14 @@ function exportPDF() {
   doc.text('SISTEMA DE CONTROL HORARIO', 14, 24);
   doc.setFontSize(8);
   doc.text('INFORME DE ASISTENCIA: ' + f.from + ' al ' + f.to, 14, 31);
-  doc.text('CENTRO: ' + f.centerName + '  |  CONTRATA: ' + f.contractorName, 14, 36);
+  doc.text('CENTRO: ' + f.centerName + '  |  CONTRATA: ' + f.contractorName + (hasHourFilter ? '  |  ' + f.hourLabel : ''), 14, 36);
 
   // Summary stats
   const totalH = rows.reduce((s, r) => s + r.horas, 0);
   const totalExtra = rows.reduce((s, r) => s + r.extras, 0);
   const totalMenos = rows.reduce((s, r) => s + r.menos, 0);
   const uniqueEmps = new Set(rows.map(r => r.empleado)).size;
-  const statsY = 44;
+  const statsY = hasHourFilter ? 48 : 44;
   doc.setTextColor(0, 0, 0);
   doc.setFillColor(245, 247, 250);
   doc.roundedRect(14, statsY, 182, 14, 2, 2, 'F');
@@ -2037,7 +2078,7 @@ function exportPDF() {
         doc.rect(0, 0, 210, 10, 'F');
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-        doc.text('TIPSA — Informe Asistencia  |  ' + f.from + ' al ' + f.to + '  |  Centro: ' + f.centerName + '  |  Contrata: ' + f.contractorName, 10, 7);
+        doc.text('TIPSA — Informe  |  ' + f.from + ' al ' + f.to + '  |  ' + f.centerName + '  |  ' + f.contractorName + (hasHourFilter ? '  |  ' + f.hourLabel : ''), 10, 7);
       }
     }
   });
