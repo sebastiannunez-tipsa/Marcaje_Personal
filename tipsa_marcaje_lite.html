@@ -547,8 +547,8 @@ tr.active-row td { background: #ecfdf5; }
             <th style="width:65px">Fecha</th>
             <th>Empleado</th>
             <th>Centro</th>
-            <th style="width:55px">Entr.</th>
-            <th style="width:55px">Sal.</th>
+            <th style="width:55px;cursor:pointer;user-select:none" ondblclick="rptSort('checkIn')" title="Doble-click para ordenar">Entr. <span id="rptSortIn" class="text-xs"></span></th>
+            <th style="width:55px;cursor:pointer;user-select:none" ondblclick="rptSort('checkOut')" title="Doble-click para ordenar">Sal. <span id="rptSortOut" class="text-xs"></span></th>
             <th style="width:45px">Horas</th>
             <th style="width:45px">+/-</th>
           </tr></thead>
@@ -1622,6 +1622,19 @@ let RPT_ALL_RECORDS = []; // unfiltered query results
 let RPT_ACTIVE_ONLY = false;
 let RPT_PAGE = 0;
 const RPT_PAGE_SIZE = 25;
+let RPT_SORT_FIELD = null;  // 'checkIn' or 'checkOut'
+let RPT_SORT_DIR = 'desc';  // 'asc' or 'desc'
+
+function rptSort(field) {
+  if (RPT_SORT_FIELD === field) {
+    RPT_SORT_DIR = RPT_SORT_DIR === 'asc' ? 'desc' : 'asc';
+  } else {
+    RPT_SORT_FIELD = field;
+    RPT_SORT_DIR = 'asc';
+  }
+  RPT_PAGE = 0;
+  renderReportsTable();
+}
 
 function toggleActiveFilter() {
   RPT_ACTIVE_ONLY = !RPT_ACTIVE_ONLY;
@@ -1651,6 +1664,8 @@ async function loadReports() {
   });
   
   RPT_PAGE = 0;
+  RPT_SORT_FIELD = null;
+  RPT_SORT_DIR = 'desc';
   renderReportsTable();
 }
 
@@ -1698,12 +1713,25 @@ function renderReportsTable() {
     });
   }
   
-  // Sort: active first, then newest
-  filtered.sort((a, b) => {
-    if (a.status === 'active' && b.status !== 'active') return -1;
-    if (a.status !== 'active' && b.status === 'active') return 1;
-    return new Date(b.checkIn) - new Date(a.checkIn);
-  });
+  // Sort
+  if (RPT_SORT_FIELD) {
+    filtered.sort((a, b) => {
+      const va = a[RPT_SORT_FIELD] ? new Date(a[RPT_SORT_FIELD]).getTime() : 0;
+      const vb = b[RPT_SORT_FIELD] ? new Date(b[RPT_SORT_FIELD]).getTime() : 0;
+      return RPT_SORT_DIR === 'asc' ? va - vb : vb - va;
+    });
+  } else {
+    // Default: active first, then newest
+    filtered.sort((a, b) => {
+      if (a.status === 'active' && b.status !== 'active') return -1;
+      if (a.status !== 'active' && b.status === 'active') return 1;
+      return new Date(b.checkIn) - new Date(a.checkIn);
+    });
+  }
+  
+  // Update sort indicators
+  $('rptSortIn').textContent = RPT_SORT_FIELD === 'checkIn' ? (RPT_SORT_DIR === 'asc' ? '▲' : '▼') : '';
+  $('rptSortOut').textContent = RPT_SORT_FIELD === 'checkOut' ? (RPT_SORT_DIR === 'asc' ? '▲' : '▼') : '';
   
   RPT_RECORDS = filtered;
   $('rptCount').textContent = filtered.length;
