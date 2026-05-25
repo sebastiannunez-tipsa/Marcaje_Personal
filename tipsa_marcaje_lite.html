@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>TIPSA Control Horario — Lite</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,700;0,9..40,900;1,9..40,400&display=swap" rel="stylesheet">
@@ -1419,8 +1422,20 @@ async function doCheckIn(backupName) {
     await fbSet('attendance', id, record);
     await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: record.checkIn });
     
-    showEmpSuccess('✅ Entrada registrada con éxito');
-    setTimeout(doLogout, 2000);
+    // Cancel any existing timers to prevent conflicts
+    if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
+    if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
+    
+    // Show success and force logout
+    $('btnCheckAction').disabled = true;
+    $('btnCheckAction').textContent = '✅ ENTRADA REGISTRADA';
+    $('btnCheckAction').className = 'btn-giant btn-success';
+    showEmpSuccess('✅ Entrada registrada. Volviendo en 2s...');
+    
+    // Force return to login - use multiple safeguards
+    setTimeout(() => { try { doLogout(); } catch(e) { location.reload(); } }, 2000);
+    // Backup: if for any reason doLogout doesn't fire in 4s, force reload
+    setTimeout(() => { if ($('viewEmployee') && !$('viewEmployee').classList.contains('hidden')) location.reload(); }, 4000);
   } catch (e) {
     showEmpError(e.message);
     updateEmployeeUI();
@@ -1438,8 +1453,17 @@ async function doCheckOut() {
     await fbUpdate('attendance', ACTIVE_SESSION.id, { checkOut: now, status: 'completed' });
     await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: now });
     
-    showEmpSuccess('¡Salida registrada con éxito!');
-    setTimeout(doLogout, 2500);
+    // Cancel any existing timers
+    if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
+    if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
+    
+    $('btnCheckAction').disabled = true;
+    $('btnCheckAction').textContent = '✅ SALIDA REGISTRADA';
+    $('btnCheckAction').className = 'btn-giant btn-success';
+    showEmpSuccess('✅ Salida registrada. Volviendo en 2s...');
+    
+    setTimeout(() => { try { doLogout(); } catch(e) { location.reload(); } }, 2000);
+    setTimeout(() => { if ($('viewEmployee') && !$('viewEmployee').classList.contains('hidden')) location.reload(); }, 4000);
   } catch (e) {
     showEmpError(e.message);
     updateEmployeeUI();
