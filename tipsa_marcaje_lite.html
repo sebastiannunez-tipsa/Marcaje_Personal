@@ -1420,10 +1420,8 @@ async function doCheckIn(backupName) {
     await fbSet('attendance', id, record);
     await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: record.checkIn });
     
-    // Set active session immediately so UI shows SALIDA button
-    ACTIVE_SESSION = record;
-    updateEmployeeUI();
-    showEmpSuccess('¡Entrada registrada con éxito! Ya puedes registrar la salida.');
+    showEmpSuccess('✅ Entrada registrada con éxito');
+    setTimeout(doLogout, 2000);
   } catch (e) {
     showEmpError(e.message);
     updateEmployeeUI();
