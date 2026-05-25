@@ -1248,15 +1248,14 @@ async function showEmployeeView() {
   // Load active session
   await checkActiveSession();
   
-  // Poll every 30s (NOT 10s) + auto-logout on inactivity
+  // NO polling — the employee view is just for one action then back to login
+  // Auto-logout after 30s if employee doesn't do anything (safety net)
   if (POLL_INTERVAL) clearInterval(POLL_INTERVAL);
-  POLL_INTERVAL = setInterval(checkActiveSession, POLL_MS);
-  resetInactivity();
-  
-  // Reset inactivity on any interaction
-  ['click', 'touchstart', 'keydown'].forEach(evt => 
-    document.addEventListener(evt, resetInactivity, { passive: true })
-  );
+  if (INACTIVITY_TIMER) clearTimeout(INACTIVITY_TIMER);
+  INACTIVITY_TIMER = setTimeout(() => {
+    toast('Sesión cerrada por inactividad', 'error');
+    doLogout();
+  }, 30000);
 }
 
 function selectEmpCenter(id) {
