@@ -1426,13 +1426,17 @@ async function doCheckIn(backupName) {
     if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
     if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
     
-    $('btnCheckAction').disabled = true;
-    $('btnCheckAction').textContent = '✅ ENTRADA REGISTRADA';
-    $('btnCheckAction').className = 'btn-giant btn-success';
-    showEmpSuccess('✅ Entrada registrada. Volviendo al inicio...');
+    // Replace the action button with a big VOLVER button
+    const btn = $('btnCheckAction');
+    btn.disabled = false;
+    btn.textContent = '🏠 VOLVER A LA PANTALLA INICIAL';
+    btn.className = 'btn-giant btn-success';
+    btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
     
-    // Force full page reload to return to login (bulletproof)
-    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 1500);
+    showEmpSuccess('✅ Entrada registrada con éxito');
+    
+    // Also auto-redirect after 2s
+    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
   } catch (e) {
     showEmpError(e.message);
     updateEmployeeUI();
@@ -1453,12 +1457,15 @@ async function doCheckOut() {
     if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
     if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
     
-    $('btnCheckAction').disabled = true;
-    $('btnCheckAction').textContent = '✅ SALIDA REGISTRADA';
-    $('btnCheckAction').className = 'btn-giant btn-success';
-    showEmpSuccess('✅ Salida registrada. Volviendo al inicio...');
+    const btn = $('btnCheckAction');
+    btn.disabled = false;
+    btn.textContent = '🏠 VOLVER A LA PANTALLA INICIAL';
+    btn.className = 'btn-giant btn-success';
+    btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
     
-    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 1500);
+    showEmpSuccess('✅ Salida registrada con éxito');
+    
+    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
   } catch (e) {
     showEmpError(e.message);
     updateEmployeeUI();
