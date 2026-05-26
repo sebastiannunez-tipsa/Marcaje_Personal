@@ -1716,18 +1716,28 @@ function editRecord(id) {
   
   const emp = DATA.employees.find(e => e.id === r.employeeId);
   const center = DATA.centers.find(c => c.id === r.centerId);
+
+  // Show local time in the input (what fmtTime/fmtDate shows in the table)
   const ciLocal = utcToLocal(r.checkIn);
   const coLocal = utcToLocal(r.checkOut);
+  
+  // Also compute what the table shows, for reference
+  const ciDisplay = r.checkIn ? `${fmtDate(r.checkIn)} ${fmtTime(r.checkIn)}` : '-';
+  const coDisplay = r.checkOut ? `${fmtDate(r.checkOut)} ${fmtTime(r.checkOut)}` : 'En curso';
   
   $('modalEditContent').innerHTML = `
     <h3 class="text-xl font-black mb-2">Editar Registro</h3>
     <p class="text-muted text-sm mb-4">${emp?.name || r.employeeName} — ${center?.name || '-'}</p>
+    <div class="card-sm mb-4" style="background:#f0fdf4;border-color:#a7f3d0">
+      <p class="text-xs font-bold text-muted mb-1">HORA ACTUAL REGISTRADA</p>
+      <p class="font-black text-sm">⏱ Entrada: ${ciDisplay} &nbsp;|&nbsp; Salida: ${coDisplay}</p>
+    </div>
     <div class="mb-4">
-      <label class="label">Entrada</label>
+      <label class="label">Nueva Entrada (hora local)</label>
       <input type="datetime-local" class="input" id="editCheckIn" value="${ciLocal}">
     </div>
     <div class="mb-4">
-      <label class="label">Salida</label>
+      <label class="label">Nueva Salida (hora local)</label>
       <input type="datetime-local" class="input" id="editCheckOut" value="${coLocal}">
     </div>
     <div class="grid-2 mt-6">
