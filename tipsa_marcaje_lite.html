@@ -1271,54 +1271,46 @@ async function checkActiveSession() {
   try {
     let found = null;
     
-    // Strategy 1: filter by employeeId
-    const results = await fbQuery({
+    // Strategy 1: query today's records only (date range), filter by this employee client-side
+    // This is the most reliable because:
+    // - Only returns today's records (small set)
+    // - No ordering needed
+    // - Employee's active session is always from today
+    const today = todayStr();
+    const allToday = await fbQuery({
       from: [{ collectionId: 'attendance' }],
-      where: { fieldFilter: { field: { fieldPath: 'employeeId' }, op: 'EQUAL', value: { stringValue: CURRENT_USER.id } } },
-      limit: 30
+      where: { compositeFilter: { op: 'AND', filters: [
+        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${today}T00:00:00.000Z` } } },
+        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${today}T23:59:59.999Z` } } }
+      ]}}
     });
-    console.log('[checkActive] empId query:', results.length, 'results');
-    if (results.length > 0) {
-      found = results.find(r => r.status === 'active') || null;
-    }
+    console.log('[checkActive] today query:', allToday.length, 'records');
+    const mine = allToday.filter(r => r.employeeId === CURRENT_USER.id);
+    console.log('[checkActive] mine today:', mine.length, '| empId:', CURRENT_USER.id);
+    found = mine.find(r => r.status === 'active') || null;
     
-    // Strategy 2: if nothing from strategy 1, try today's records
-    if (!found && results.length === 0) {
-      const today = todayStr();
-      const allToday = await fbQuery({
+    // Strategy 2: if today query returned 0, try direct employeeId filter
+    // (catches edge case where check-in was done in a different UTC day)
+    if (!found) {
+      const byEmp = await fbQuery({
         from: [{ collectionId: 'attendance' }],
-        where: { compositeFilter: { op: 'AND', filters: [
-          { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${today}T00:00:00.000Z` } } },
-          { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${today}T23:59:59.999Z` } } }
-        ]}}
+        where: { fieldFilter: { field: { fieldPath: 'employeeId' }, op: 'EQUAL', value: { stringValue: CURRENT_USER.id } } },
+        limit: 100
       });
-      console.log('[checkActive] today query:', allToday.length, 'results');
-      const mine = allToday.filter(r => r.employeeId === CURRENT_USER.id);
-      if (mine.length > 0) {
-        found = mine.find(r => r.status === 'active') || null;
-      }
+      console.log('[checkActive] byEmp query:', byEmp.length, 'records');
+      found = byEmp.find(r => r.status === 'active') || null;
+      console.log('[checkActive] active in byEmp:', found ? found.id : 'none');
     }
     
-    // Strategy 3: if still nothing, try unfiltered small batch
-    if (!found && results.length === 0) {
-      const batch = await fbQuery({
-        from: [{ collectionId: 'attendance' }],
-        limit: 50
-      });
-      console.log('[checkActive] unfiltered batch:', batch.length, 'results');
-      const mine = batch.filter(r => r.employeeId === CURRENT_USER.id && r.status === 'active');
-      if (mine.length > 0) found = mine[0];
-    }
-    
-    console.log('[checkActive] found:', found ? found.id : 'null', '| prev:', ACTIVE_SESSION ? ACTIVE_SESSION.id : 'null');
+    console.log('[checkActive] FINAL found:', found ? found.id : 'null');
     
     if (found) {
       ACTIVE_SESSION = found;
-    } else if (results.length > 0) {
-      // Got results but none active → no open session
+    } else if (allToday.length > 0) {
+      // Got today's records, none active = no open session
       ACTIVE_SESSION = null;
     }
-    // else: all queries returned 0 → keep previous ACTIVE_SESSION
+    // If all queries returned 0 (rate limit/error), keep previous ACTIVE_SESSION
     
     updateEmployeeUI();
   } catch (e) {
