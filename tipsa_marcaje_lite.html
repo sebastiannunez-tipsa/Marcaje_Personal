@@ -733,7 +733,44 @@ let READS_DATE = localStorage.getItem('tipsa_reads_date') || '';
 // Reset counter if new day
 if (READS_DATE !== todayStr()) { READS_TODAY = 0; READS_DATE = todayStr(); saveQuota(); }
 
-function todayStr() { return new Date().toISOString().slice(0, 10); }
+// Date helpers - use LOCAL time (Spain CEST/CET) not UTC
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+// Convert local datetime-local value to UTC ISO string (for Firestore)
+function localToUTC(localStr) {
+  if (!localStr) return null;
+  return new Date(localStr).toISOString();
+}
+// Convert UTC ISO string to local datetime-local input value (YYYY-MM-DDTHH:MM)
+function utcToLocal(utcStr) {
+  if (!utcStr) return '';
+  const d = new Date(utcStr);
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${mo}-${day}T${h}:${mi}`;
+}
+// Get today's date range in UTC accounting for local timezone
+function todayUTCRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  return { from: start.toISOString(), to: end.toISOString() };
+}
+// Get date range for a given YYYY-MM-DD string in local timezone → UTC
+function dateRangeUTC(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const start = new Date(y, m - 1, d, 0, 0, 0);
+  const end = new Date(y, m - 1, d, 23, 59, 59, 999);
+  return { from: start.toISOString(), to: end.toISOString() };
+}
 function saveQuota() {
   localStorage.setItem('tipsa_reads_count', String(READS_TODAY));
   localStorage.setItem('tipsa_reads_date', READS_DATE);
@@ -1276,12 +1313,12 @@ async function checkActiveSession() {
     // - Only returns today's records (small set)
     // - No ordering needed
     // - Employee's active session is always from today
-    const today = todayStr();
+    const { from: todayFrom, to: todayTo } = todayUTCRange();
     const allToday = await fbQuery({
       from: [{ collectionId: 'attendance' }],
       where: { compositeFilter: { op: 'AND', filters: [
-        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${today}T00:00:00.000Z` } } },
-        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${today}T23:59:59.999Z` } } }
+        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: todayFrom } } },
+        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: todayTo } } }
       ]}}
     });
     console.log('[checkActive] today query:', allToday.length, 'records');
@@ -1359,18 +1396,27 @@ function updateEmployeeUI() {
   }
 }
 
+let IS_PROCESSING = false;
+
 async function handleCheckAction() {
-  if (ACTIVE_SESSION) {
-    await doCheckOut();
-  } else {
-    // Check if backup
-    const isBackup = CURRENT_USER.name.toLowerCase().includes('backup') && (CURRENT_USER.dni || '').toLowerCase() === 'backup';
-    if (isBackup) {
-      $('inpBackupName').value = '';
-      show('modalBackup');
+  if (IS_PROCESSING) return; // Prevent double-tap
+  IS_PROCESSING = true;
+  try {
+    if (ACTIVE_SESSION) {
+      await doCheckOut();
     } else {
-      await doCheckIn();
+      const isBackup = CURRENT_USER.name.toLowerCase().includes('backup') && (CURRENT_USER.dni || '').toLowerCase() === 'backup';
+      if (isBackup) {
+        $('inpBackupName').value = '';
+        show('modalBackup');
+        IS_PROCESSING = false; // Modal takes over
+      } else {
+        await doCheckIn();
+      }
     }
+  } finally {
+    // Only reset if not redirecting
+    if (IS_PROCESSING) IS_PROCESSING = false;
   }
 }
 
@@ -1390,11 +1436,27 @@ async function doCheckIn(backupName) {
   hide('empError'); hide('empSuccess');
   
   try {
-    const pos = await new Promise((res, rej) => {
-      const t = setTimeout(() => rej(new Error('Timeout GPS')), 10000);
-      navigator.geolocation.getCurrentPosition(p => { clearTimeout(t); res(p); }, e => { clearTimeout(t); rej(e); },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
-    });
+    let pos;
+    try {
+      pos = await new Promise((res, rej) => {
+        const t = setTimeout(() => rej(new Error('GPS_TIMEOUT')), 12000);
+        navigator.geolocation.getCurrentPosition(
+          p => { clearTimeout(t); res(p); },
+          e => { clearTimeout(t); rej(e); },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        );
+      });
+    } catch (gpsErr) {
+      // GPS failed - allow checkin without GPS if error code is POSITION_UNAVAILABLE
+      const code = gpsErr.code || 0;
+      if (code === 2 || gpsErr.message === 'GPS_TIMEOUT') {
+        // POSITION_UNAVAILABLE or timeout - proceed with 0,0 and large dist so it fails radius check
+        // but show specific error
+        throw new Error('No se pudo obtener tu ubicación GPS. Asegúrate de tener el GPS activado y permiso concedido al navegador.');
+      }
+      if (code === 1) throw new Error('Permiso de ubicación denegado. Activa la ubicación en el navegador e inténtalo de nuevo.');
+      throw new Error('Error GPS: ' + (gpsErr.message || 'Desconocido'));
+    }
     
     const dist = calcDist(pos.coords.latitude, pos.coords.longitude, center.latitude, center.longitude);
     
@@ -1430,6 +1492,7 @@ async function doCheckIn(backupName) {
     // Also auto-redirect after 2s
     setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
   } catch (e) {
+    IS_PROCESSING = false;
     showEmpError(e.message);
     updateEmployeeUI();
   }
@@ -1459,6 +1522,7 @@ async function doCheckOut() {
     
     setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
   } catch (e) {
+    IS_PROCESSING = false;
     showEmpError(e.message);
     updateEmployeeUI();
   }
@@ -1541,11 +1605,13 @@ async function loadDashboard() {
   const from = $('dashDateFrom').value;
   const to = $('dashDateTo').value;
   
+  const { from: fromUTC } = dateRangeUTC(from);
+  const { to: toUTC } = dateRangeUTC(to);
   DASH_RECORDS = await fbQuery({
     from: [{ collectionId: 'attendance' }],
     where: { compositeFilter: { op: 'AND', filters: [
-      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${from}T00:00:00.000Z` } } },
-      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${to}T23:59:59.999Z` } } }
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: fromUTC } } },
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: toUTC } } }
     ]}}
   });
   
@@ -1650,8 +1716,8 @@ function editRecord(id) {
   
   const emp = DATA.employees.find(e => e.id === r.employeeId);
   const center = DATA.centers.find(c => c.id === r.centerId);
-  const ciLocal = r.checkIn ? new Date(r.checkIn).toISOString().slice(0, 16) : '';
-  const coLocal = r.checkOut ? new Date(r.checkOut).toISOString().slice(0, 16) : '';
+  const ciLocal = utcToLocal(r.checkIn);
+  const coLocal = utcToLocal(r.checkOut);
   
   $('modalEditContent').innerHTML = `
     <h3 class="text-xl font-black mb-2">Editar Registro</h3>
@@ -1678,8 +1744,8 @@ async function saveEditRecord(id) {
   if (!ci) { toast('Entrada requerida', 'error'); return; }
   
   const update = {
-    checkIn: new Date(ci).toISOString(),
-    checkOut: co ? new Date(co).toISOString() : null,
+    checkIn: localToUTC(ci),
+    checkOut: co ? localToUTC(co) : null,
     status: co ? 'completed' : 'active',
     modifiedBy: CURRENT_USER?.name || 'Admin',
     modifiedAt: new Date().toISOString()
@@ -1754,12 +1820,13 @@ function toggleActiveFilter() {
 async function loadReports() {
   const from = $('rptDateFrom').value;
   const to = $('rptDateTo').value;
-  
+  const { from: fromUTC } = dateRangeUTC(from);
+  const { to: toUTC } = dateRangeUTC(to);
   RPT_ALL_RECORDS = await fbQuery({
     from: [{ collectionId: 'attendance' }],
     where: { compositeFilter: { op: 'AND', filters: [
-      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${from}T00:00:00.000Z` } } },
-      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${to}T23:59:59.999Z` } } }
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: fromUTC } } },
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: toUTC } } }
     ]}}
   });
   
@@ -2237,12 +2304,13 @@ let chartKpiDailyInstance = null;
 async function loadKPIs() {
   const from = $('kpiDateFrom').value;
   const to = $('kpiDateTo').value;
-  
+  const { from: fromUTC } = dateRangeUTC(from);
+  const { to: toUTC } = dateRangeUTC(to);
   const records = await fbQuery({
     from: [{ collectionId: 'attendance' }],
     where: { compositeFilter: { op: 'AND', filters: [
-      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: `${from}T00:00:00.000Z` } } },
-      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: `${to}T23:59:59.999Z` } } }
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: fromUTC } } },
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: toUTC } } }
     ]}}
   });
   
