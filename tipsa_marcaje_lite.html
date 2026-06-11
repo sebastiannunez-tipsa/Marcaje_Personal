@@ -1148,16 +1148,22 @@ function filterLoginEmployees() {
   const contractorId = $('selContractor').value;
   
   let filtered = DATA.employees.filter(e => {
-    // Filter out terminated
+    // Filter out terminated employees
     if (e.terminationDate && new Date(e.terminationDate) < new Date()) return false;
     
     if (IS_ADMIN_MODE) {
+      // Admin mode: show employees that have admin privileges
       const role = DATA.roles.find(r => r.id === e.roleId);
       return e.role === 'admin' || role?.isAdmin;
     } else {
-      // Marcaje mode: exclude paused employees
+      // Marcaje mode: show ALL active employees
+      // Even if role=admin, they might also need to clock in (e.g. supervisors)
+      // Only exclude if they are PURE system admin with password (admin-only account)
       if (e.paused === true) return false;
-      if (e.role === 'admin') return false;
+      // Only exclude the system admin account (DNI=ADMIN01) from marcaje
+      // Regular employees with admin role (like supervisors) CAN clock in
+      const isSystemAdmin = e.dni === 'ADMIN01' || e.dni === 'admin';
+      if (isSystemAdmin) return false;
       if (centerId && !(e.centerIds || []).includes(centerId)) return false;
       if (contractorId && e.contractorId !== contractorId) return false;
       return true;
