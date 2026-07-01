@@ -772,7 +772,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v7';
+const APP_VERSION = '2026-05-26-v8';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -1424,17 +1424,20 @@ async function showEmployeeView() {
     }
   }
   
-  // Load active session
-  await checkActiveSession();
-  
-  // Show correct button area
+  // Show correct button area FIRST (before async operations)
   if (isBackupEmployee(CURRENT_USER)) {
     hide('normalActionBtn');
     show('backupActionBtns');
+    $('btnCheckAction').disabled = false;
   } else {
     show('normalActionBtn');
     hide('backupActionBtns');
+    $('btnCheckAction').disabled = true;
+    $('btnCheckAction').textContent = '⏳ Verificando...';
   }
+  
+  // Load active session (async - updates UI when done)
+  await checkActiveSession();
   
   // Auto-logout after 30s inactivity
   if (INACTIVITY_TIMER) clearTimeout(INACTIVITY_TIMER);
@@ -1818,15 +1821,13 @@ async function doCheckIn(backupName) {
     
     showEmpSuccess(`✅ Entrada registrada${backupName ? ' para ' + backupName : ' con éxito'}`);
     
-    // Replace buttons with VOLVER
+    // Hide all action buttons and show VOLVER in their place
     hide('normalActionBtn');
     hide('backupActionBtns');
-    const volver = document.createElement('button');
-    volver.className = 'btn-giant btn-success';
-    volver.style.cssText = 'width:100%;border-radius:20px;padding:24px;font-size:18px;font-weight:900;border:none;cursor:pointer;color:#fff;';
-    volver.textContent = '🏠 VOLVER A LA PANTALLA INICIAL';
-    volver.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
-    $('btnCheckAction').parentNode.insertBefore(volver, $('btnCheckAction'));
+    const dbg = $('empDebug');
+    dbg.innerHTML = `<button onclick="window.location.href=window.location.pathname+'?t='+Date.now()" 
+      style="width:100%;padding:20px;background:#059669;color:#fff;border:none;border-radius:16px;font-size:16px;font-weight:900;cursor:pointer;margin-top:12px">
+      🏠 VOLVER A LA PANTALLA INICIAL</button>`;
     
     setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2500);
   } catch (e) {
@@ -1845,18 +1846,21 @@ async function doCheckOut() {
   try {
     const now = new Date().toISOString();
     await fbUpdate('attendance', ACTIVE_SESSION.id, { checkOut: now, status: 'completed' });
-    await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: now });
+    const empId = CURRENT_USER?.id || '';
+    if (empId && !empId.startsWith('backup_virtual_')) {
+      try { await fbUpdate('employees', empId, { lastAttendance: now }); } catch(_) {}
+    }
     
     if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
     if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
     
-    const btn = $('btnCheckAction');
-    btn.disabled = false;
-    btn.textContent = '🏠 VOLVER A LA PANTALLA INICIAL';
-    btn.className = 'btn-giant btn-success';
-    btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
-    
     showEmpSuccess('✅ Salida registrada con éxito');
+    hide('normalActionBtn');
+    hide('backupActionBtns');
+    const dbg = $('empDebug');
+    dbg.innerHTML = `<button onclick="window.location.href=window.location.pathname+'?t='+Date.now()" 
+      style="width:100%;padding:20px;background:#059669;color:#fff;border:none;border-radius:16px;font-size:16px;font-weight:900;cursor:pointer;margin-top:12px">
+      🏠 VOLVER A LA PANTALLA INICIAL</button>`;
     
     setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
   } catch (e) {
