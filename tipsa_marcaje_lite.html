@@ -759,7 +759,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v5';
+const APP_VERSION = '2026-05-26-v6';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -978,7 +978,14 @@ async function fbGetAll(col) {
   // DEBUG: log backup employees found
   if (col === 'employees') {
     const bk = docs.filter(e => (e.dni||'').toLowerCase()==='backup' || e.isBackup===true);
-    console.log(`[fbGetAll employees] total=${docs.length} backups=${bk.length}`, bk.map(e=>({n:e.name,dni:e.dni,isB:e.isBackup,cids:e.centerIds})));
+    // Also check raw Firestore data for first candidate
+    const rawBackup = d.find(x => x.document && (x.document.fields?.name?.stringValue||'').toLowerCase().includes('backup'));
+    console.log(`[fbGetAll employees] total=${docs.length} backups=${bk.length}`,
+      'rawExample:', rawBackup ? JSON.stringify(rawBackup.document.fields).slice(0,200) : 'none found in raw');
+    if (bk.length === 0 && rawBackup) {
+      const parsed = docToObj(rawBackup.document);
+      console.log('[DEBUG] Parsed backup candidate:', parsed.name, 'dni:', parsed.dni, 'isBackup:', parsed.isBackup, 'typeof isBackup:', typeof parsed.isBackup);
+    }
   }
   
   // Count reads
@@ -1019,12 +1026,6 @@ async function fbQuery(structuredQuery) {
   }
   
   const docs = d.filter(x => x.document).map(x => docToObj(x.document));
-  
-  // Debug: log backup employees in result
-  if (col === 'employees') {
-    const bk = docs.filter(e => (e.dni || '').toLowerCase() === 'backup' || e.isBackup === true);
-    console.log(`[fbGetAll] employees: ${docs.length} total, ${bk.length} backups:`, bk.map(e => e.name + ' isBackup=' + e.isBackup + ' dni=' + e.dni));
-  }
   
   // Count reads
   addReads(Math.max(docs.length, 1));
@@ -1721,58 +1722,30 @@ async function confirmBackup() {
 
 async function doCheckIn(backupName) {
   const center = DATA.centers.find(c => c.id === SELECTED_CENTER_ID);
-  if (!center) { showEmpError('Selecciona un centro.'); return; }
+  if (!center) { showEmpError('Selecciona un centro.'); IS_PROCESSING = false; return; }
   
   $('btnCheckAction').disabled = true;
-  $('btnCheckAction').textContent = '⏳ Obteniendo ubicación...';
+  $('btnCheckAction').textContent = '⏳ Registrando entrada...';
   hide('empError'); hide('empSuccess');
   
   try {
-    let pos;
-    try {
-      pos = await new Promise((res, rej) => {
-        const t = setTimeout(() => rej(new Error('GPS_TIMEOUT')), 12000);
-        navigator.geolocation.getCurrentPosition(
-          p => { clearTimeout(t); res(p); },
-          e => { clearTimeout(t); rej(e); },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-        );
-      });
-    } catch (gpsErr) {
-      // GPS failed - allow checkin without GPS if error code is POSITION_UNAVAILABLE
-      const code = gpsErr.code || 0;
-      if (code === 2 || gpsErr.message === 'GPS_TIMEOUT') {
-        // POSITION_UNAVAILABLE or timeout - proceed with 0,0 and large dist so it fails radius check
-        // but show specific error
-        throw new Error('No se pudo obtener tu ubicación GPS. Asegúrate de tener el GPS activado y permiso concedido al navegador.');
-      }
-      if (code === 1) throw new Error('Permiso de ubicación denegado. Activa la ubicación en el navegador e inténtalo de nuevo.');
-      throw new Error('Error GPS: ' + (gpsErr.message || 'Desconocido'));
-    }
-    
-    const dist = calcDist(pos.coords.latitude, pos.coords.longitude, center.latitude, center.longitude);
-    
-    if (dist > center.radius) {
-      throw new Error(`Fuera de rango: ${Math.round(dist)}m del centro "${center.name}". Máximo: ${center.radius}m.`);
-    }
-    
     const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const record = {
       id, employeeId: CURRENT_USER.id, employeeName: CURRENT_USER.name,
-      centerId: center.id, latitude: pos.coords.latitude, longitude: pos.coords.longitude,
-      distance: Math.round(dist), checkIn: new Date().toISOString(),
+      centerId: center.id, checkIn: new Date().toISOString(),
       checkOut: null, status: 'active'
     };
     if (backupName) record.backupRealName = backupName;
     
     await fbSet('attendance', id, record);
-    await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: record.checkIn });
+    // Update lastAttendance only if employee is in DB (skip virtual backup)
+    if (!CURRENT_USER.id?.startsWith('backup_virtual_')) {
+      await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: record.checkIn });
+    }
     
-    // Cancel any existing timers
     if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
     if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
     
-    // Replace the action button with a big VOLVER button
     const btn = $('btnCheckAction');
     btn.disabled = false;
     btn.textContent = '🏠 VOLVER A LA PANTALLA INICIAL';
@@ -1780,8 +1753,6 @@ async function doCheckIn(backupName) {
     btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
     
     showEmpSuccess('✅ Entrada registrada con éxito');
-    
-    // Also auto-redirect after 2s
     setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
   } catch (e) {
     IS_PROCESSING = false;
