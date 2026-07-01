@@ -354,6 +354,7 @@ tr.active-row td { background: #ecfdf5; }
         <input type="password" class="input" id="inpPassword" placeholder="Contraseña">
       </div>
       <button class="btn btn-primary btn-block btn-lg" id="btnLogin" onclick="doLogin()" disabled>ACCEDER</button>
+      <div id="loginDebug" class="text-center mt-3" style="font-size:10px;color:#94a3b8"></div>
     </div>
   </div>
 </div>
@@ -1200,6 +1201,14 @@ function filterLoginEmployees() {
   // Separate backups and regular employees
   const backups = filtered.filter(e => isBackupEmployee(e));
   const regulars = filtered.filter(e => !isBackupEmployee(e));
+  
+  // Debug info
+  const dbgEl = $('loginDebug');
+  if (dbgEl) {
+    const totalBack = DATA.employees.filter(e => isBackupEmployee(e)).length;
+    const centerId = $('selCenter').value;
+    dbgEl.textContent = `Empleados cargados: ${DATA.employees.length} total · ${totalBack} backup · ${backups.length} backup en este centro · v${Date.now().toString().slice(-5)}`;
+  }
   
   // Show backup employees first with visual separator
   if (backups.length > 0) {
