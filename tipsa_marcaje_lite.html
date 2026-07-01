@@ -1525,8 +1525,8 @@ function updateEmployeeUI() {
     $('empCheckInTime').textContent = fmtTime(ACTIVE_SESSION.checkIn);
     btn.textContent = '⬅ REGISTRAR SALIDA';
     btn.className = 'btn-giant btn-dark';
-    btn.onclick = handleCheckAction;
     btn.disabled = false;
+    btn.onclick = function() { doCheckOut(); };
     if (dbg) { dbg.textContent = `Sesión activa: ${ACTIVE_SESSION.checkIn?.slice(11,19)}`; dbg.style.color='var(--success)'; }
     if (ACTIVE_SESSION.backupRealName) {
       $('empName').textContent = ACTIVE_SESSION.backupRealName;
@@ -1540,8 +1540,8 @@ function updateEmployeeUI() {
     $('empCheckInTime').textContent = '--:--:--';
     btn.textContent = '➡ REGISTRAR ENTRADA';
     btn.className = 'btn-giant btn-primary';
-    btn.onclick = handleCheckAction;
-    btn.disabled = false;  // Always enable - center was auto-selected
+    btn.disabled = false;
+    btn.onclick = function() { doCheckIn(); };
     hide('empBackupBadge');
     if (dbg) { dbg.textContent = `Centro: ${DATA.centers.find(c=>c.id===SELECTED_CENTER_ID)?.name||'?'}`; dbg.style.color='var(--muted)'; }
     document.querySelectorAll('.center-btn').forEach(b => b.disabled = false);
@@ -1781,56 +1781,47 @@ async function confirmBackup() {
 }
 
 async function doCheckIn(backupName) {
+  const btn = $('btnCheckAction');
   const center = DATA.centers.find(c => c.id === SELECTED_CENTER_ID);
-  if (!center) { showEmpError('Selecciona un centro.'); IS_PROCESSING = false; return; }
+  if (!center) { showEmpError('Selecciona un centro.'); return; }
   
-  if (!isBackupEmployee(CURRENT_USER)) {
-    $('btnCheckAction').disabled = true;
-    $('btnCheckAction').textContent = '⏳ Registrando entrada...';
-  }
+  // Disable button to prevent double-click
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Registrando...'; }
   hide('empError'); hide('empSuccess');
   
   try {
     const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const empId = CURRENT_USER.id || `backup_${Date.now()}`;
     const record = {
-      id,
-      employeeId: empId,
-      employeeName: CURRENT_USER.name,
-      centerId: center.id,
-      checkIn: new Date().toISOString(),
-      checkOut: null,
-      status: 'active'
+      id, employeeId: empId, employeeName: CURRENT_USER.name,
+      centerId: center.id, checkIn: new Date().toISOString(),
+      checkOut: null, status: 'active'
     };
     if (backupName) record.backupRealName = backupName;
     
     await fbSet('attendance', id, record);
-    
-    // Only update employee record if it's a real DB employee (not virtual)
     if (!empId.startsWith('backup_virtual_')) {
       try { await fbUpdate('employees', empId, { lastAttendance: record.checkIn }); } catch(_) {}
     }
     
-    if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
-    if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
-    
-    showEmpSuccess(`✅ Entrada registrada${backupName ? ' para ' + backupName : ' con éxito'}`);
-    btn.textContent = '🏠 VOLVER AL INICIO';
-    btn.className = 'btn-giant btn-success';
-    btn.disabled = false;
-    btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
+    showEmpSuccess(`✅ Entrada registrada${backupName ? ' para ' + backupName : ''}`);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🏠 VOLVER AL INICIO';
+      btn.className = 'btn-giant btn-success';
+      btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
+    }
     setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2500);
   } catch (e) {
-    IS_PROCESSING = false;
-    showEmpError('Error al registrar: ' + e.message);
-    if (!isBackupEmployee(CURRENT_USER)) updateEmployeeUI();
+    showEmpError('Error: ' + e.message);
+    updateEmployeeUI();
   }
 }
 
 async function doCheckOut() {
   if (!ACTIVE_SESSION) return;
-  $('btnCheckAction').disabled = true;
-  $('btnCheckAction').textContent = '⏳ Registrando salida...';
+  const btn = $('btnCheckAction');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Registrando salida...'; }
   hide('empError'); hide('empSuccess');
   
   try {
@@ -1840,19 +1831,15 @@ async function doCheckOut() {
     if (empId && !empId.startsWith('backup_virtual_')) {
       try { await fbUpdate('employees', empId, { lastAttendance: now }); } catch(_) {}
     }
-    
-    if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
-    if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
-    
-    showEmpSuccess('✅ Salida registrada con éxito');
-    const btn2 = $('btnCheckAction');
-    btn2.textContent = '🏠 VOLVER AL INICIO';
-    btn2.className = 'btn-giant btn-success';
-    btn2.disabled = false;
-    btn2.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
+    showEmpSuccess('✅ Salida registrada');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🏠 VOLVER AL INICIO';
+      btn.className = 'btn-giant btn-success';
+      btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
+    }
     setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
   } catch (e) {
-    IS_PROCESSING = false;
     showEmpError(e.message);
     updateEmployeeUI();
   }
