@@ -354,6 +354,16 @@ tr.active-row td { background: #ecfdf5; }
         <input type="password" class="input" id="inpPassword" placeholder="Contraseña">
       </div>
       <button class="btn btn-primary btn-block btn-lg" id="btnLogin" onclick="doLogin()" disabled>ACCEDER</button>
+      
+      <!-- Dedicated BACKUP access - always visible -->
+      <div style="margin-top:4px;padding-top:12px;border-top:1px solid var(--border)">
+        <p class="text-xs text-muted text-center mb-2">¿Empleado no registrado en el sistema?</p>
+        <button class="btn btn-block" onclick="openBackupMode()"
+          style="background:#1e40af;color:#fff;border-radius:12px;padding:14px;font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.06em">
+          🔵 ACCESO BACKUP (empleado sin ficha)
+        </button>
+      </div>
+      
       <div id="loginDebug" class="text-center mt-3" style="font-size:10px;color:#94a3b8"></div>
     </div>
   </div>
@@ -410,7 +420,31 @@ tr.active-row td { background: #ecfdf5; }
   </div>
 </div>
 
-<!-- ════════════════════ BACKUP MODAL ENTRADA ════════════════════ -->
+<!-- ════════════════════ BACKUP ACCESS MODAL ════════════════════ -->
+<div id="modalBackupAccess" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 class="text-xl font-black mb-1">🔵 Acceso Backup</h3>
+    <p class="text-muted text-sm mb-4">Para empleados no dados de alta en el sistema</p>
+    <div class="flex flex-col gap-3">
+      <div>
+        <label class="label">Centro de Trabajo</label>
+        <select class="select" id="bkCenterSel" onchange="onBackupCenterChange()">
+          <option value="">Seleccionar centro...</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">Contrata</label>
+        <select class="select" id="bkContractorSel">
+          <option value="">Seleccionar contrata...</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid-2 mt-5">
+      <button class="btn btn-outline btn-block" onclick="closeModal('modalBackupAccess')">Cancelar</button>
+      <button class="btn btn-primary btn-block" onclick="proceedBackupAccess()">Continuar →</button>
+    </div>
+  </div>
+</div>
 <div id="modalBackup" class="modal-overlay hidden">
   <div class="modal">
     <h3 class="text-xl font-black mb-2">🔵 Registrar Entrada — Backup</h3>
@@ -725,7 +759,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v3';
+const APP_VERSION = '2026-05-26-v4';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -1474,6 +1508,91 @@ function updateEmployeeUI() {
 }
 
 // ── Backup helpers ──
+// ── Dedicated Backup Access (bypasses employee dropdown) ──
+function openBackupMode() {
+  const bkCenter = $('bkCenterSel');
+  const bkCon = $('bkContractorSel');
+  
+  // Populate center dropdown
+  bkCenter.innerHTML = '<option value="">Seleccionar centro...</option>';
+  DATA.centers.forEach(c => bkCenter.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+  
+  // Pre-select nearest center from login if already selected
+  const loginCenter = $('selCenter').value;
+  if (loginCenter) bkCenter.value = loginCenter;
+  
+  bkCon.innerHTML = '<option value="">Seleccionar contrata...</option>';
+  if (loginCenter) onBackupCenterChange();
+  
+  show('modalBackupAccess');
+}
+
+function onBackupCenterChange() {
+  const centerId = $('bkCenterSel').value;
+  const bkCon = $('bkContractorSel');
+  bkCon.innerHTML = '<option value="">Seleccionar contrata...</option>';
+  if (!centerId) return;
+  
+  // Show contractors that have backup employees at this center
+  const backupEmps = DATA.employees.filter(e =>
+    isBackupEmployee(e) && (e.centerIds || []).includes(centerId)
+  );
+  const contractorIds = [...new Set(backupEmps.map(e => e.contractorId).filter(Boolean))];
+  
+  if (contractorIds.length > 0) {
+    contractorIds.forEach(cid => {
+      const c = DATA.contractors.find(x => x.id === cid);
+      if (c) bkCon.innerHTML += `<option value="${cid}">${c.name}</option>`;
+    });
+  } else {
+    // Fallback: show all contractors
+    DATA.contractors.forEach(c => bkCon.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+  }
+}
+
+async function proceedBackupAccess() {
+  const centerId = $('bkCenterSel').value;
+  const contractorId = $('bkContractorSel').value;
+  if (!centerId) { toast('Selecciona un centro', 'error'); return; }
+  if (!contractorId) { toast('Selecciona una contrata', 'error'); return; }
+  
+  // Find the backup employee for this center + contractor
+  let backupEmp = DATA.employees.find(e =>
+    isBackupEmployee(e) &&
+    (e.centerIds || []).includes(centerId) &&
+    e.contractorId === contractorId
+  );
+  
+  if (!backupEmp) {
+    // No specific backup for this combo — use any backup at this center
+    backupEmp = DATA.employees.find(e =>
+      isBackupEmployee(e) && (e.centerIds || []).includes(centerId)
+    );
+  }
+  
+  if (!backupEmp) {
+    // Last resort: create a virtual backup employee on the fly
+    const contractor = DATA.contractors.find(c => c.id === contractorId);
+    backupEmp = {
+      id: `backup_virtual_${centerId}_${contractorId}`,
+      name: `Backup ${contractor?.name || 'General'}`,
+      dni: 'Backup',
+      isBackup: true,
+      contractorId,
+      centerIds: [centerId],
+      role: 'employee'
+    };
+  }
+  
+  closeModal('modalBackupAccess');
+  CURRENT_USER = backupEmp;
+  SELECTED_CENTER_ID = centerId;
+  
+  $('headerUser').innerHTML = `<span>${backupEmp.name}</span><button class="btn btn-outline" style="padding:6px 12px;font-size:10px;color:#fff;border-color:rgba(255,255,255,.2)" onclick="doLogout()">Salir</button>`;
+  hide('viewLogin');
+  showEmployeeView();
+}
+
 function isBackupEmployee(emp) {
   if (!emp) return false;
   if (emp.isBackup === true) return true;
