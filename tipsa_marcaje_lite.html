@@ -759,7 +759,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v4';
+const APP_VERSION = '2026-05-26-v5';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -975,6 +975,12 @@ async function fbGetAll(col) {
   const d = await r.json();
   const docs = d.filter(x => x.document).map(x => docToObj(x.document));
   
+  // DEBUG: log backup employees found
+  if (col === 'employees') {
+    const bk = docs.filter(e => (e.dni||'').toLowerCase()==='backup' || e.isBackup===true);
+    console.log(`[fbGetAll employees] total=${docs.length} backups=${bk.length}`, bk.map(e=>({n:e.name,dni:e.dni,isB:e.isBackup,cids:e.centerIds})));
+  }
+  
   // Count reads
   addReads(Math.max(docs.length, 1));
   
@@ -1013,6 +1019,12 @@ async function fbQuery(structuredQuery) {
   }
   
   const docs = d.filter(x => x.document).map(x => docToObj(x.document));
+  
+  // Debug: log backup employees in result
+  if (col === 'employees') {
+    const bk = docs.filter(e => (e.dni || '').toLowerCase() === 'backup' || e.isBackup === true);
+    console.log(`[fbGetAll] employees: ${docs.length} total, ${bk.length} backups:`, bk.map(e => e.name + ' isBackup=' + e.isBackup + ' dni=' + e.dni));
+  }
   
   // Count reads
   addReads(Math.max(docs.length, 1));
@@ -1168,6 +1180,16 @@ function showLogin() {
   
   populateLoginSelects();
   setLoginMode(false);
+  
+  // Debug: show employee count and backup count
+  const totalEmps = DATA.employees.length;
+  const backups = DATA.employees.filter(e => isBackupEmployee(e));
+  const dbg = $('loginDebug');
+  if (dbg) {
+    dbg.innerHTML = `v4 · ${totalEmps} empleados · ${backups.length} backups`;
+    dbg.style.color = backups.length > 0 ? '#059669' : '#dc2626';
+  }
+  console.log('[DEBUG] DATA.employees:', totalEmps, '| Backups:', backups.length, backups.map(e => e.name));
 }
 
 function setLoginMode(isAdmin) {
