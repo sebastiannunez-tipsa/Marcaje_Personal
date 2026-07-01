@@ -409,7 +409,7 @@ tr.active-row td { background: #ecfdf5; }
     </div>
 
     <!-- Action button -->
-    <button class="btn-giant btn-primary" id="btnCheckAction" onclick="handleCheckAction()" disabled>
+    <button class="btn-giant btn-primary" id="btnCheckAction">
       ⏳ Cargando...
     </button>
     
@@ -772,7 +772,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v9';
+const APP_VERSION = '2026-05-26-v10';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -1433,12 +1433,15 @@ async function showEmployeeView() {
   } else {
     btn.style.display = '';
     $('backupActionBtns').style.display = 'none';
-    btn.disabled = true;
-    btn.textContent = '⏳ Verificando...';
+    // Set button immediately so user can click without waiting
+    btn.disabled = false;
+    btn.textContent = '➡ REGISTRAR ENTRADA';
+    btn.className = 'btn-giant btn-primary';
+    btn.onclick = function() { doCheckIn(); };
   }
   
-  // Load active session (updates button state when done)
-  await checkActiveSession();
+  // Check for active session in background (will update button if needed)
+  checkActiveSession();
   
   // Auto-logout after 30s inactivity
   if (INACTIVITY_TIMER) clearTimeout(INACTIVITY_TIMER);
