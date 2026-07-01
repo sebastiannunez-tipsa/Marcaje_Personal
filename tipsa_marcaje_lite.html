@@ -772,7 +772,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v11';
+const APP_VERSION = '2026-05-26-v12';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -1688,7 +1688,7 @@ function isBackupEmployee(emp) {
   return d === 'backup';
 }
 
-let BACKUP_ACTIVE_SESSIONS = []; // today's open backup sessions for this center
+// ── Backup helpers ──
 
 async function handleCheckAction() {
   if (IS_PROCESSING) return;
