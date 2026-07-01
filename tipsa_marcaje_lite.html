@@ -724,6 +724,20 @@ tr.active-row td { background: #ecfdf5; }
    ══════════════════════════════════════════════════════ */
 
 // ── Firebase Config ──
+// ── App version — increment when deploying to force cache refresh ──
+const APP_VERSION = '2026-05-26-v3';
+(function clearOldCache() {
+  if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
+    // New version deployed — wipe all stale cache
+    const keysToKeep = ['tipsa_reads_count', 'tipsa_reads_date'];
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('tipsa_') && !keysToKeep.includes(k))
+      .forEach(k => localStorage.removeItem(k));
+    localStorage.setItem('tipsa_app_version', APP_VERSION);
+    console.log('[TIPSA] Cache cleared for new version:', APP_VERSION);
+  }
+})();
+
 const CFG = {
   apiKey: 'AIzaSyCSX_fZrgaZ_jVPqCEIFlA01kF_71AXT4w',
   projectId: 'gen-lang-client-0796008211',
