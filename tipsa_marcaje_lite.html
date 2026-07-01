@@ -1432,9 +1432,9 @@ function updateEmployeeUI() {
 // ── Backup helpers ──
 function isBackupEmployee(emp) {
   if (!emp) return false;
-  const n = (emp.name || '').toLowerCase();
+  if (emp.isBackup === true) return true;
   const d = (emp.dni || '').toLowerCase();
-  return d === 'backup' || (n.includes('backup') && d === 'backup');
+  return d === 'backup';
 }
 
 let BACKUP_ACTIVE_SESSIONS = []; // today's open backup sessions for this center
