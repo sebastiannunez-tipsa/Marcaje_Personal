@@ -1064,6 +1064,11 @@ async function init() {
   
   try {
     await fbAuth();
+    
+    // Always clear employees cache on startup to get latest data
+    delete CACHE_TS['employees'];
+    localStorage.removeItem('tipsa_cache_employees');
+    
     DATA.employees = await fbGetAll('employees');
     DATA.centers = await fbGetAll('centers');
     DATA.contractors = await fbGetAll('contractors');
@@ -1180,17 +1185,33 @@ function filterLoginEmployees() {
       // Only exclude if they are PURE system admin with password (admin-only account)
       if (e.paused === true) return false;
       // Only exclude the system admin account (DNI=ADMIN01) from marcaje
-      // Regular employees with admin role (like supervisors) CAN clock in
       const isSystemAdmin = e.dni === 'ADMIN01' || e.dni === 'admin';
       if (isSystemAdmin) return false;
+      // Center filter applies to all (including backup)
       if (centerId && !(e.centerIds || []).includes(centerId)) return false;
-      if (contractorId && e.contractorId !== contractorId) return false;
+      // Contractor filter: backup employees bypass it (they serve all contractors at their center)
+      if (!isBackupEmployee(e) && contractorId && e.contractorId !== contractorId) return false;
       return true;
     }
   });
   
   filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  filtered.forEach(e => sel.innerHTML += `<option value="${e.id}">${e.name}</option>`);
+  
+  // Separate backups and regular employees
+  const backups = filtered.filter(e => isBackupEmployee(e));
+  const regulars = filtered.filter(e => !isBackupEmployee(e));
+  
+  // Show backup employees first with visual separator
+  if (backups.length > 0) {
+    sel.innerHTML += `<option disabled>── 🔵 EMPLEADOS BACKUP ──</option>`;
+    backups.forEach(e => {
+      const contractor = DATA.contractors.find(c => c.id === e.contractorId);
+      const label = `🔵 ${e.name}${contractor ? ' (' + contractor.name + ')' : ''}`;
+      sel.innerHTML += `<option value="${e.id}">${label}</option>`;
+    });
+    if (regulars.length > 0) sel.innerHTML += `<option disabled>── 👤 EMPLEADOS ──</option>`;
+  }
+  regulars.forEach(e => sel.innerHTML += `<option value="${e.id}">${e.name}</option>`);
   
   onEmployeeSelected();
 }
