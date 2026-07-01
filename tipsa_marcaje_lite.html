@@ -408,21 +408,21 @@ tr.active-row td { background: #ecfdf5; }
       </div>
     </div>
 
-    <!-- Action buttons -->
-    <div id="normalActionBtn">
-      <button class="btn-giant btn-primary" id="btnCheckAction" onclick="handleCheckAction()" disabled>
-        ⏳ Cargando...
-      </button>
-    </div>
+    <!-- Action button -->
+    <button class="btn-giant btn-primary" id="btnCheckAction" onclick="handleCheckAction()" disabled>
+      ⏳ Cargando...
+    </button>
     
-    <!-- Backup action buttons (shown only for backup employees) -->
-    <div id="backupActionBtns" class="hidden flex flex-col gap-3">
-      <button class="btn-giant btn-primary" onclick="backupDoEntry()" style="border-radius:20px;padding:24px">
-        📥 REGISTRAR ENTRADA
-      </button>
-      <button class="btn-giant btn-dark" onclick="backupDoExit()" style="border-radius:20px;padding:24px">
-        📤 REGISTRAR SALIDA
-      </button>
+    <!-- Backup extra buttons (only shown for backup employees) -->
+    <div id="backupActionBtns" class="hidden" style="display:none">
+      <div class="flex flex-col gap-3 mt-0">
+        <button class="btn-giant btn-primary" onclick="backupDoEntry()" style="border-radius:20px;padding:24px">
+          📥 REGISTRAR ENTRADA BACKUP
+        </button>
+        <button class="btn-giant btn-dark" onclick="backupDoExit()" style="border-radius:20px;padding:24px">
+          📤 REGISTRAR SALIDA BACKUP
+        </button>
+      </div>
     </div>
     
     <div class="text-xs text-muted text-center mt-2" id="empDebug"></div>
@@ -772,7 +772,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v8';
+const APP_VERSION = '2026-05-26-v9';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -1424,19 +1424,20 @@ async function showEmployeeView() {
     }
   }
   
-  // Show correct button area FIRST (before async operations)
+  // Show correct button area
+  const btn = $('btnCheckAction');
   if (isBackupEmployee(CURRENT_USER)) {
-    hide('normalActionBtn');
-    show('backupActionBtns');
-    $('btnCheckAction').disabled = false;
+    btn.style.display = 'none';
+    $('backupActionBtns').style.display = 'block';
+    $('backupActionBtns').classList.remove('hidden');
   } else {
-    show('normalActionBtn');
-    hide('backupActionBtns');
-    $('btnCheckAction').disabled = true;
-    $('btnCheckAction').textContent = '⏳ Verificando...';
+    btn.style.display = '';
+    $('backupActionBtns').style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = '⏳ Verificando...';
   }
   
-  // Load active session (async - updates UI when done)
+  // Load active session (updates button state when done)
   await checkActiveSession();
   
   // Auto-logout after 30s inactivity
@@ -1508,6 +1509,15 @@ async function checkActiveSession() {
 function updateEmployeeUI() {
   const btn = $('btnCheckAction');
   const dbg = $('empDebug');
+  if (!btn) return;
+  
+  // Skip updating the main button for backup employees
+  if (isBackupEmployee(CURRENT_USER)) {
+    btn.style.display = 'none';
+    return;
+  }
+  
+  btn.style.display = '';
   
   if (ACTIVE_SESSION) {
     $('empStatusDot').className = 'pulse-dot';
@@ -1515,19 +1525,13 @@ function updateEmployeeUI() {
     $('empCheckInTime').textContent = fmtTime(ACTIVE_SESSION.checkIn);
     btn.textContent = '⬅ REGISTRAR SALIDA';
     btn.className = 'btn-giant btn-dark';
+    btn.onclick = handleCheckAction;
     btn.disabled = false;
-    dbg.textContent = `Sesión: ${ACTIVE_SESSION.id} | ${ACTIVE_SESSION.checkIn?.slice(0,19)}`;
-    dbg.style.color = 'var(--success)';
-    
+    if (dbg) { dbg.textContent = `Sesión activa: ${ACTIVE_SESSION.checkIn?.slice(11,19)}`; dbg.style.color='var(--success)'; }
     if (ACTIVE_SESSION.backupRealName) {
       $('empName').textContent = ACTIVE_SESSION.backupRealName;
-      $('empBackupLabel').textContent = `Backup: ${CURRENT_USER.name}`;
       show('empBackupBadge');
-    } else {
-      hide('empBackupBadge');
-    }
-    
-    // Disable center selection
+    } else { hide('empBackupBadge'); }
     document.querySelectorAll('.center-btn').forEach(b => b.disabled = true);
   } else {
     $('empStatusDot').style.background = '#cbd5e1';
@@ -1537,18 +1541,9 @@ function updateEmployeeUI() {
     btn.textContent = '➡ REGISTRAR ENTRADA';
     btn.className = 'btn-giant btn-primary';
     btn.onclick = handleCheckAction;
-    btn.disabled = !SELECTED_CENTER_ID;
+    btn.disabled = false;  // Always enable - center was auto-selected
     hide('empBackupBadge');
-    
-    // For backup employees, show different text since they may have active sessions
-    if (isBackupEmployee(CURRENT_USER)) {
-      btn.textContent = '⚡ FICHAR (ENTRADA / SALIDA)';
-      btn.disabled = !SELECTED_CENTER_ID;
-    }
-    
-    dbg.textContent = `ID: ${CURRENT_USER?.id} | Sin sesión activa`;
-    dbg.style.color = 'var(--muted)';
-    
+    if (dbg) { dbg.textContent = `Centro: ${DATA.centers.find(c=>c.id===SELECTED_CENTER_ID)?.name||'?'}`; dbg.style.color='var(--muted)'; }
     document.querySelectorAll('.center-btn').forEach(b => b.disabled = false);
   }
 }
@@ -1820,15 +1815,10 @@ async function doCheckIn(backupName) {
     if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
     
     showEmpSuccess(`✅ Entrada registrada${backupName ? ' para ' + backupName : ' con éxito'}`);
-    
-    // Hide all action buttons and show VOLVER in their place
-    hide('normalActionBtn');
-    hide('backupActionBtns');
-    const dbg = $('empDebug');
-    dbg.innerHTML = `<button onclick="window.location.href=window.location.pathname+'?t='+Date.now()" 
-      style="width:100%;padding:20px;background:#059669;color:#fff;border:none;border-radius:16px;font-size:16px;font-weight:900;cursor:pointer;margin-top:12px">
-      🏠 VOLVER A LA PANTALLA INICIAL</button>`;
-    
+    btn.textContent = '🏠 VOLVER AL INICIO';
+    btn.className = 'btn-giant btn-success';
+    btn.disabled = false;
+    btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
     setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2500);
   } catch (e) {
     IS_PROCESSING = false;
@@ -1855,13 +1845,11 @@ async function doCheckOut() {
     if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
     
     showEmpSuccess('✅ Salida registrada con éxito');
-    hide('normalActionBtn');
-    hide('backupActionBtns');
-    const dbg = $('empDebug');
-    dbg.innerHTML = `<button onclick="window.location.href=window.location.pathname+'?t='+Date.now()" 
-      style="width:100%;padding:20px;background:#059669;color:#fff;border:none;border-radius:16px;font-size:16px;font-weight:900;cursor:pointer;margin-top:12px">
-      🏠 VOLVER A LA PANTALLA INICIAL</button>`;
-    
+    const btn2 = $('btnCheckAction');
+    btn2.textContent = '🏠 VOLVER AL INICIO';
+    btn2.className = 'btn-giant btn-success';
+    btn2.disabled = false;
+    btn2.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
     setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
   } catch (e) {
     IS_PROCESSING = false;
