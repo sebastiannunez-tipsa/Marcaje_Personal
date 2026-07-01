@@ -409,15 +409,30 @@ tr.active-row td { background: #ecfdf5; }
   </div>
 </div>
 
-<!-- ════════════════════ BACKUP MODAL ════════════════════ -->
+<!-- ════════════════════ BACKUP MODAL ENTRADA ════════════════════ -->
 <div id="modalBackup" class="modal-overlay hidden">
   <div class="modal">
-    <h3 class="text-xl font-black mb-2">Identificación Backup</h3>
-    <p class="text-muted text-sm mb-4">Introduce tu nombre completo para este registro.</p>
-    <input type="text" class="input mb-4" id="inpBackupName" placeholder="Ej: Juan Pérez García" maxlength="30">
+    <h3 class="text-xl font-black mb-2">🔵 Registrar Entrada — Backup</h3>
+    <p class="text-muted text-sm mb-4">Introduce el nombre completo del trabajador que va a entrar.</p>
+    <input type="text" class="input mb-4" id="inpBackupName" placeholder="Ej: Juan Pérez García" maxlength="60" autocomplete="off">
     <div class="grid-2">
-      <button class="btn btn-outline btn-block" onclick="closeModal('modalBackup')">Cancelar</button>
-      <button class="btn btn-primary btn-block" onclick="confirmBackup()">Confirmar</button>
+      <button class="btn btn-outline btn-block" onclick="closeModal('modalBackup');IS_PROCESSING=false;">Cancelar</button>
+      <button class="btn btn-primary btn-block" onclick="confirmBackup()">✅ Confirmar Entrada</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ BACKUP MODAL SALIDA ════════════════════ -->
+<div id="modalBackupOut" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 class="text-xl font-black mb-2">🔴 Registrar Salida — Backup</h3>
+    <p class="text-muted text-sm mb-4">Selecciona el trabajador que registra la salida.</p>
+    <select class="select mb-4" id="selBackupOut">
+      <option value="">-- Seleccionar --</option>
+    </select>
+    <div class="grid-2">
+      <button class="btn btn-outline btn-block" onclick="closeModal('modalBackupOut');IS_PROCESSING=false;">Cancelar</button>
+      <button class="btn btn-dark btn-block" onclick="confirmBackupOut()">⬅ Confirmar Salida</button>
     </div>
   </div>
 </div>
@@ -510,13 +525,17 @@ tr.active-row td { background: #ecfdf5; }
         </div>
       </div>
       <div class="flex gap-3 mt-3" style="flex-wrap:wrap;align-items:end">
-        <div style="min-width:100px">
+        <div style="flex:1;min-width:100px">
           <label class="label">Desde Hora Entrada</label>
           <input type="time" class="input" id="rptHourFrom" value="">
         </div>
         <div style="min-width:100px">
           <label class="label">Hasta Hora Salida</label>
           <input type="time" class="input" id="rptHourTo" value="">
+        </div>
+        <div style="flex:2;min-width:180px">
+          <label class="label">Buscar Empleado</label>
+          <input type="text" class="input" id="rptEmployee" placeholder="Nombre o parte del nombre..." autocomplete="off" oninput="RPT_PAGE=0;renderReportsTable()">
         </div>
         <button class="btn btn-primary" onclick="loadReports()">Buscar</button>
         <button class="btn btn-outline" id="btnRptActive" onclick="toggleActiveFilter()" title="Filtrar solo activos (sin salida)" style="white-space:nowrap">🟢 Solo Activos</button>
@@ -1393,8 +1412,16 @@ function updateEmployeeUI() {
     $('empCheckInTime').textContent = '--:--:--';
     btn.textContent = '➡ REGISTRAR ENTRADA';
     btn.className = 'btn-giant btn-primary';
+    btn.onclick = handleCheckAction;
     btn.disabled = !SELECTED_CENTER_ID;
     hide('empBackupBadge');
+    
+    // For backup employees, show different text since they may have active sessions
+    if (isBackupEmployee(CURRENT_USER)) {
+      btn.textContent = '⚡ FICHAR (ENTRADA / SALIDA)';
+      btn.disabled = !SELECTED_CENTER_ID;
+    }
+    
     dbg.textContent = `ID: ${CURRENT_USER?.id} | Sin sesión activa`;
     dbg.style.color = 'var(--muted)';
     
@@ -1402,27 +1429,101 @@ function updateEmployeeUI() {
   }
 }
 
-let IS_PROCESSING = false;
+// ── Backup helpers ──
+function isBackupEmployee(emp) {
+  if (!emp) return false;
+  const n = (emp.name || '').toLowerCase();
+  const d = (emp.dni || '').toLowerCase();
+  return d === 'backup' || (n.includes('backup') && d === 'backup');
+}
+
+let BACKUP_ACTIVE_SESSIONS = []; // today's open backup sessions for this center
 
 async function handleCheckAction() {
-  if (IS_PROCESSING) return; // Prevent double-tap
+  if (IS_PROCESSING) return;
   IS_PROCESSING = true;
+  
   try {
-    if (ACTIVE_SESSION) {
-      await doCheckOut();
-    } else {
-      const isBackup = CURRENT_USER.name.toLowerCase().includes('backup') && (CURRENT_USER.dni || '').toLowerCase() === 'backup';
-      if (isBackup) {
-        $('inpBackupName').value = '';
-        show('modalBackup');
-        IS_PROCESSING = false; // Modal takes over
+    if (!isBackupEmployee(CURRENT_USER)) {
+      // Regular employee
+      if (ACTIVE_SESSION) {
+        await doCheckOut();
       } else {
         await doCheckIn();
       }
+      return;
     }
-  } finally {
-    // Only reset if not redirecting
-    if (IS_PROCESSING) IS_PROCESSING = false;
+    
+    // ── BACKUP FLOW ──
+    // Query today's ACTIVE backup sessions for this center + this backup employee
+    const { from: todayFrom, to: todayTo } = todayUTCRange();
+    const todaySessions = await fbQuery({
+      from: [{ collectionId: 'attendance' }],
+      where: { compositeFilter: { op: 'AND', filters: [
+        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: todayFrom } } },
+        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: todayTo } } }
+      ]}}
+    });
+    
+    // Filter: same backup employee ID + same center + status active (no checkOut)
+    BACKUP_ACTIVE_SESSIONS = todaySessions.filter(r =>
+      r.employeeId === CURRENT_USER.id &&
+      r.centerId === SELECTED_CENTER_ID &&
+      r.status === 'active' &&
+      r.backupRealName
+    );
+    
+    console.log(`[backup] Active sessions today: ${BACKUP_ACTIVE_SESSIONS.length}`);
+    
+    if (BACKUP_ACTIVE_SESSIONS.length === 0) {
+      // No active sessions → ENTRY flow
+      $('inpBackupName').value = '';
+      show('modalBackup');
+      IS_PROCESSING = false;
+    } else {
+      // Has active sessions → EXIT flow: ask which person is leaving
+      const sel = $('selBackupOut');
+      sel.innerHTML = '<option value="">-- Seleccionar trabajador --</option>';
+      BACKUP_ACTIVE_SESSIONS.forEach((r, i) => {
+        sel.innerHTML += `<option value="${i}">${r.backupRealName} (entrada: ${fmtTime(r.checkIn)})</option>`;
+      });
+      show('modalBackupOut');
+      IS_PROCESSING = false;
+    }
+  } catch (e) {
+    IS_PROCESSING = false;
+    showEmpError('Error: ' + e.message);
+    updateEmployeeUI();
+  }
+}
+
+async function confirmBackupOut() {
+  const idx = $('selBackupOut').value;
+  if (idx === '') { showEmpError('Selecciona un trabajador'); return; }
+  
+  const session = BACKUP_ACTIVE_SESSIONS[parseInt(idx)];
+  if (!session) return;
+  
+  hide('modalBackupOut');
+  IS_PROCESSING = true;
+  $('btnCheckAction').disabled = true;
+  $('btnCheckAction').textContent = '⏳ Registrando salida...';
+  
+  try {
+    const now = new Date().toISOString();
+    await fbUpdate('attendance', session.id, { checkOut: now, status: 'completed' });
+    
+    const btn = $('btnCheckAction');
+    btn.disabled = false;
+    btn.textContent = '🏠 VOLVER A LA PANTALLA INICIAL';
+    btn.className = 'btn-giant btn-success';
+    btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
+    showEmpSuccess(`✅ Salida registrada para ${session.backupRealName}`);
+    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
+  } catch (e) {
+    IS_PROCESSING = false;
+    showEmpError('Error al registrar salida: ' + e.message);
+    updateEmployeeUI();
   }
 }
 
@@ -1861,6 +1962,7 @@ function rptChangePage(delta) {
 function clearHourFilters() {
   $('rptHourFrom').value = '';
   $('rptHourTo').value = '';
+  if ($('rptEmployee')) $('rptEmployee').value = '';
   RPT_PAGE = 0;
   renderReportsTable();
 }
@@ -1868,8 +1970,9 @@ function clearHourFilters() {
 function renderReportsTable() {
   const centerId = $('rptCenter').value;
   const contractorId = $('rptContractor').value;
-  const hourFrom = $('rptHourFrom').value; // "HH:MM" or ""
+  const hourFrom = $('rptHourFrom').value;
   const hourTo = $('rptHourTo').value;
+  const empSearch = ($('rptEmployee')?.value || '').toLowerCase().trim();
   
   let filtered = [...RPT_ALL_RECORDS];
   if (centerId) filtered = filtered.filter(r => r.centerId === centerId);
@@ -1878,6 +1981,14 @@ function renderReportsTable() {
     return emp?.contractorId === contractorId;
   });
   if (RPT_ACTIVE_ONLY) filtered = filtered.filter(r => r.status === 'active');
+  
+  // Employee name filter
+  if (empSearch) {
+    filtered = filtered.filter(r => {
+      const displayName = (r.backupRealName || r.employeeName || '').toLowerCase();
+      return displayName.includes(empSearch);
+    });
+  }
   
   // Hour range filter
   if (hourFrom) {
@@ -2511,7 +2622,10 @@ function renderEmployeeTable() {
     tbody.innerHTML += `<tr style="${isPaused ? 'opacity:.6' : ''}">
       <td>
         <button class="btn btn-outline" style="padding:4px 10px;font-size:10px" onclick="editEmployee('${e.id}')">✏️</button>
-        <button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="removeEmployee('${e.id}')">🗑</button>
+        ${isBackupEmployee(e)
+          ? `<span class="badge badge-warn" style="font-size:9px">PROTEGIDO</span>`
+          : `<button class="btn btn-outline" style="padding:4px 10px;font-size:10px;color:var(--danger)" onclick="removeEmployee('${e.id}')">🗑</button>`
+        }
       </td>
       <td>${statusBadge}</td>
       <td class="font-black">${e.name}</td><td>${e.dni}</td>
@@ -2620,6 +2734,10 @@ async function saveEmployee(existingId) {
 
 async function removeEmployee(id) {
   const emp = DATA.employees.find(e => e.id === id);
+  if (isBackupEmployee(emp)) {
+    toast('Los empleados Backup no se pueden eliminar', 'error');
+    return;
+  }
   if (!confirm(`¿Eliminar a ${emp?.name}?`)) return;
   try {
     await fbDelete('employees', id);
