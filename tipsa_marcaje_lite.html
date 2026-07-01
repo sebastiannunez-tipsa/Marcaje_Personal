@@ -772,7 +772,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v10';
+const APP_VERSION = '2026-05-26-v11';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -796,6 +796,7 @@ const FB_QUERY = `https://firestore.googleapis.com/v1/projects/${CFG.projectId}/
 // ── State ──
 let TOKEN = null;
 let UID = null;
+let IS_PROCESSING = false;
 let DATA = { employees: [], centers: [], contractors: [], roles: [] };
 let CURRENT_USER = null;
 let ACTIVE_SESSION = null;
@@ -804,6 +805,7 @@ let SELECTED_CENTER_ID = null;
 let POLL_INTERVAL = null;
 let INACTIVITY_TIMER = null;
 let CACHE_TS = {};
+let BACKUP_ACTIVE_SESSIONS = [];
 
 // ── Quota Control ──
 const QUOTA_LIMIT = 40000;
