@@ -408,10 +408,23 @@ tr.active-row td { background: #ecfdf5; }
       </div>
     </div>
 
-    <!-- Action button -->
-    <button class="btn-giant btn-primary" id="btnCheckAction" onclick="handleCheckAction()" disabled>
-      ⏳ Cargando...
-    </button>
+    <!-- Action buttons -->
+    <div id="normalActionBtn">
+      <button class="btn-giant btn-primary" id="btnCheckAction" onclick="handleCheckAction()" disabled>
+        ⏳ Cargando...
+      </button>
+    </div>
+    
+    <!-- Backup action buttons (shown only for backup employees) -->
+    <div id="backupActionBtns" class="hidden flex flex-col gap-3">
+      <button class="btn-giant btn-primary" onclick="backupDoEntry()" style="border-radius:20px;padding:24px">
+        📥 REGISTRAR ENTRADA
+      </button>
+      <button class="btn-giant btn-dark" onclick="backupDoExit()" style="border-radius:20px;padding:24px">
+        📤 REGISTRAR SALIDA
+      </button>
+    </div>
+    
     <div class="text-xs text-muted text-center mt-2" id="empDebug"></div>
 
     <button class="btn btn-outline btn-block mt-4" onclick="doLogout()">
@@ -759,7 +772,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v6';
+const APP_VERSION = '2026-05-26-v7';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -1414,9 +1427,16 @@ async function showEmployeeView() {
   // Load active session
   await checkActiveSession();
   
-  // NO polling — the employee view is just for one action then back to login
-  // Auto-logout after 30s if employee doesn't do anything (safety net)
-  if (POLL_INTERVAL) clearInterval(POLL_INTERVAL);
+  // Show correct button area
+  if (isBackupEmployee(CURRENT_USER)) {
+    hide('normalActionBtn');
+    show('backupActionBtns');
+  } else {
+    show('normalActionBtn');
+    hide('backupActionBtns');
+  }
+  
+  // Auto-logout after 30s inactivity
   if (INACTIVITY_TIMER) clearTimeout(INACTIVITY_TIMER);
   INACTIVITY_TIMER = setTimeout(() => {
     toast('Sesión cerrada por inactividad', 'error');
@@ -1616,6 +1636,48 @@ async function proceedBackupAccess() {
   showEmployeeView();
 }
 
+// ── Direct Backup Entry (no Firestore query needed) ──
+function backupDoEntry() {
+  $('inpBackupName').value = '';
+  show('modalBackup');
+}
+
+// ── Direct Backup Exit (query today's open sessions) ──
+async function backupDoExit() {
+  const sel = $('selBackupOut');
+  sel.innerHTML = '<option value="">Cargando...</option>';
+  show('modalBackupOut');
+  
+  try {
+    const { from: todayFrom, to: todayTo } = todayUTCRange();
+    const allToday = await fbQuery({
+      from: [{ collectionId: 'attendance' }],
+      where: { compositeFilter: { op: 'AND', filters: [
+        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: todayFrom } } },
+        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: todayTo } } }
+      ]}}
+    });
+    
+    // Filter: same center, backup entries (have backupRealName), still active
+    BACKUP_ACTIVE_SESSIONS = allToday.filter(r =>
+      r.centerId === SELECTED_CENTER_ID &&
+      r.status === 'active' &&
+      r.backupRealName
+    );
+    
+    sel.innerHTML = '<option value="">-- Seleccionar trabajador --</option>';
+    if (BACKUP_ACTIVE_SESSIONS.length === 0) {
+      sel.innerHTML = '<option value="" disabled>No hay entradas backup activas hoy</option>';
+    } else {
+      BACKUP_ACTIVE_SESSIONS.forEach((r, i) => {
+        sel.innerHTML += `<option value="${i}">${r.backupRealName} — entrada: ${fmtTime(r.checkIn)}</option>`;
+      });
+    }
+  } catch (e) {
+    sel.innerHTML = `<option value="" disabled>Error: ${e.message}</option>`;
+  }
+}
+
 function isBackupEmployee(emp) {
   if (!emp) return false;
   if (emp.isBackup === true) return true;
@@ -1724,40 +1786,53 @@ async function doCheckIn(backupName) {
   const center = DATA.centers.find(c => c.id === SELECTED_CENTER_ID);
   if (!center) { showEmpError('Selecciona un centro.'); IS_PROCESSING = false; return; }
   
-  $('btnCheckAction').disabled = true;
-  $('btnCheckAction').textContent = '⏳ Registrando entrada...';
+  if (!isBackupEmployee(CURRENT_USER)) {
+    $('btnCheckAction').disabled = true;
+    $('btnCheckAction').textContent = '⏳ Registrando entrada...';
+  }
   hide('empError'); hide('empSuccess');
   
   try {
     const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const empId = CURRENT_USER.id || `backup_${Date.now()}`;
     const record = {
-      id, employeeId: CURRENT_USER.id, employeeName: CURRENT_USER.name,
-      centerId: center.id, checkIn: new Date().toISOString(),
-      checkOut: null, status: 'active'
+      id,
+      employeeId: empId,
+      employeeName: CURRENT_USER.name,
+      centerId: center.id,
+      checkIn: new Date().toISOString(),
+      checkOut: null,
+      status: 'active'
     };
     if (backupName) record.backupRealName = backupName;
     
     await fbSet('attendance', id, record);
-    // Update lastAttendance only if employee is in DB (skip virtual backup)
-    if (!CURRENT_USER.id?.startsWith('backup_virtual_')) {
-      await fbUpdate('employees', CURRENT_USER.id, { lastAttendance: record.checkIn });
+    
+    // Only update employee record if it's a real DB employee (not virtual)
+    if (!empId.startsWith('backup_virtual_')) {
+      try { await fbUpdate('employees', empId, { lastAttendance: record.checkIn }); } catch(_) {}
     }
     
     if (INACTIVITY_TIMER) { clearTimeout(INACTIVITY_TIMER); INACTIVITY_TIMER = null; }
     if (POLL_INTERVAL) { clearInterval(POLL_INTERVAL); POLL_INTERVAL = null; }
     
-    const btn = $('btnCheckAction');
-    btn.disabled = false;
-    btn.textContent = '🏠 VOLVER A LA PANTALLA INICIAL';
-    btn.className = 'btn-giant btn-success';
-    btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
+    showEmpSuccess(`✅ Entrada registrada${backupName ? ' para ' + backupName : ' con éxito'}`);
     
-    showEmpSuccess('✅ Entrada registrada con éxito');
-    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
+    // Replace buttons with VOLVER
+    hide('normalActionBtn');
+    hide('backupActionBtns');
+    const volver = document.createElement('button');
+    volver.className = 'btn-giant btn-success';
+    volver.style.cssText = 'width:100%;border-radius:20px;padding:24px;font-size:18px;font-weight:900;border:none;cursor:pointer;color:#fff;';
+    volver.textContent = '🏠 VOLVER A LA PANTALLA INICIAL';
+    volver.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
+    $('btnCheckAction').parentNode.insertBefore(volver, $('btnCheckAction'));
+    
+    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2500);
   } catch (e) {
     IS_PROCESSING = false;
-    showEmpError(e.message);
-    updateEmployeeUI();
+    showEmpError('Error al registrar: ' + e.message);
+    if (!isBackupEmployee(CURRENT_USER)) updateEmployeeUI();
   }
 }
 
