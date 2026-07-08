@@ -772,7 +772,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v12';
+const APP_VERSION = '2026-05-26-v13';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -1142,10 +1142,8 @@ async function init() {
   try {
     await fbAuth();
     
-    // Always clear employees cache on startup to get latest data
-    delete CACHE_TS['employees'];
-    localStorage.removeItem('tipsa_cache_employees');
-    
+    // Load data - uses cache if valid (employees: 4h, centers/contractors/roles: 24h)
+    // Cache is only cleared when APP_VERSION changes (new deployment)
     DATA.employees = await fbGetAll('employees');
     DATA.centers = await fbGetAll('centers');
     DATA.contractors = await fbGetAll('contractors');
@@ -1459,50 +1457,44 @@ function selectEmpCenter(id) {
   showEmployeeView();
 }
 
+// In-memory cache for today's attendance (shared between checkActiveSession and backupDoExit)
+let TODAY_ATTENDANCE_CACHE = null;
+let TODAY_ATTENDANCE_TS = 0;
+const TODAY_CACHE_TTL = 60000; // 1 minute cache
+
+async function getTodayAttendance() {
+  const now = Date.now();
+  if (TODAY_ATTENDANCE_CACHE && (now - TODAY_ATTENDANCE_TS) < TODAY_CACHE_TTL) {
+    return TODAY_ATTENDANCE_CACHE;
+  }
+  const { from: todayFrom, to: todayTo } = todayUTCRange();
+  const records = await fbQuery({
+    from: [{ collectionId: 'attendance' }],
+    where: { compositeFilter: { op: 'AND', filters: [
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: todayFrom } } },
+      { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: todayTo } } }
+    ]}}
+  });
+  TODAY_ATTENDANCE_CACHE = records;
+  TODAY_ATTENDANCE_TS = now;
+  return records;
+}
+
 async function checkActiveSession() {
   try {
-    let found = null;
+    // Single query: get all today's attendance, filter client-side
+    // Uses 1-min memory cache to avoid re-querying when multiple employees use same device
+    const allToday = await getTodayAttendance();
     
-    // Strategy 1: query today's records only (date range), filter by this employee client-side
-    // This is the most reliable because:
-    // - Only returns today's records (small set)
-    // - No ordering needed
-    // - Employee's active session is always from today
-    const { from: todayFrom, to: todayTo } = todayUTCRange();
-    const allToday = await fbQuery({
-      from: [{ collectionId: 'attendance' }],
-      where: { compositeFilter: { op: 'AND', filters: [
-        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: todayFrom } } },
-        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: todayTo } } }
-      ]}}
-    });
-    console.log('[checkActive] today query:', allToday.length, 'records');
     const mine = allToday.filter(r => r.employeeId === CURRENT_USER.id);
-    console.log('[checkActive] mine today:', mine.length, '| empId:', CURRENT_USER.id);
-    found = mine.find(r => r.status === 'active') || null;
-    
-    // Strategy 2: if today query returned 0, try direct employeeId filter
-    // (catches edge case where check-in was done in a different UTC day)
-    if (!found) {
-      const byEmp = await fbQuery({
-        from: [{ collectionId: 'attendance' }],
-        where: { fieldFilter: { field: { fieldPath: 'employeeId' }, op: 'EQUAL', value: { stringValue: CURRENT_USER.id } } },
-        limit: 100
-      });
-      console.log('[checkActive] byEmp query:', byEmp.length, 'records');
-      found = byEmp.find(r => r.status === 'active') || null;
-      console.log('[checkActive] active in byEmp:', found ? found.id : 'none');
-    }
-    
-    console.log('[checkActive] FINAL found:', found ? found.id : 'null');
+    const found = mine.find(r => r.status === 'active') || null;
     
     if (found) {
       ACTIVE_SESSION = found;
     } else if (allToday.length > 0) {
-      // Got today's records, none active = no open session
       ACTIVE_SESSION = null;
     }
-    // If all queries returned 0 (rate limit/error), keep previous ACTIVE_SESSION
+    // If query returned 0 (error/rate-limit), keep previous ACTIVE_SESSION
     
     updateEmployeeUI();
   } catch (e) {
@@ -1652,16 +1644,10 @@ async function backupDoExit() {
   show('modalBackupOut');
   
   try {
-    const { from: todayFrom, to: todayTo } = todayUTCRange();
-    const allToday = await fbQuery({
-      from: [{ collectionId: 'attendance' }],
-      where: { compositeFilter: { op: 'AND', filters: [
-        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: todayFrom } } },
-        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: todayTo } } }
-      ]}}
-    });
+    // Use cached today's attendance (same data checkActiveSession uses - no extra reads)
+    TODAY_ATTENDANCE_TS = 0; // Force refresh for exit (need latest data)
+    const allToday = await getTodayAttendance();
     
-    // Filter: same center, backup entries (have backupRealName), still active
     BACKUP_ACTIVE_SESSIONS = allToday.filter(r =>
       r.centerId === SELECTED_CENTER_ID &&
       r.status === 'active' &&
@@ -1670,7 +1656,7 @@ async function backupDoExit() {
     
     sel.innerHTML = '<option value="">-- Seleccionar trabajador --</option>';
     if (BACKUP_ACTIVE_SESSIONS.length === 0) {
-      sel.innerHTML = '<option value="" disabled>No hay entradas backup activas hoy</option>';
+      sel.innerHTML = '<option value="" disabled>No hay entradas backup activas hoy en este centro</option>';
     } else {
       BACKUP_ACTIVE_SESSIONS.forEach((r, i) => {
         sel.innerHTML += `<option value="${i}">${r.backupRealName} — entrada: ${fmtTime(r.checkIn)}</option>`;
@@ -1805,6 +1791,7 @@ async function doCheckIn(backupName) {
     if (backupName) record.backupRealName = backupName;
     
     await fbSet('attendance', id, record);
+    TODAY_ATTENDANCE_TS = 0; // Invalidate today cache so next employee sees fresh data
     if (!empId.startsWith('backup_virtual_')) {
       try { await fbUpdate('employees', empId, { lastAttendance: record.checkIn }); } catch(_) {}
     }
@@ -1832,6 +1819,7 @@ async function doCheckOut() {
   try {
     const now = new Date().toISOString();
     await fbUpdate('attendance', ACTIVE_SESSION.id, { checkOut: now, status: 'completed' });
+    TODAY_ATTENDANCE_TS = 0; // Invalidate today cache
     const empId = CURRENT_USER?.id || '';
     if (empId && !empId.startsWith('backup_virtual_')) {
       try { await fbUpdate('employees', empId, { lastAttendance: now }); } catch(_) {}
@@ -1926,6 +1914,14 @@ let chartCentersInstance = null;
 async function loadDashboard() {
   const from = $('dashDateFrom').value;
   const to = $('dashDateTo').value;
+  const today = todayStr();
+  
+  // If querying today only, reuse the in-memory attendance cache (saves reads)
+  if (from === today && to === today && TODAY_ATTENDANCE_CACHE && TODAY_ATTENDANCE_CACHE.length > 0) {
+    DASH_RECORDS = TODAY_ATTENDANCE_CACHE;
+    renderDashFromCache();
+    return;
+  }
   
   const { from: fromUTC } = dateRangeUTC(from);
   const { to: toUTC } = dateRangeUTC(to);
@@ -1936,6 +1932,12 @@ async function loadDashboard() {
       { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: toUTC } } }
     ]}}
   });
+  
+  // If this was a today query, update the memory cache too
+  if (from === today && to === today) {
+    TODAY_ATTENDANCE_CACHE = DASH_RECORDS;
+    TODAY_ATTENDANCE_TS = Date.now();
+  }
   
   renderDashFromCache();
 }
