@@ -772,7 +772,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v13';
+const APP_VERSION = '2026-05-26-v14';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -1785,7 +1785,9 @@ async function doCheckIn(backupName) {
     const empId = CURRENT_USER.id || `backup_${Date.now()}`;
     const record = {
       id, employeeId: empId, employeeName: CURRENT_USER.name,
-      centerId: center.id, checkIn: new Date().toISOString(),
+      centerId: center.id,
+      contractorId: CURRENT_USER.contractorId || null,
+      checkIn: new Date().toISOString(),
       checkOut: null, status: 'active'
     };
     if (backupName) record.backupRealName = backupName;
@@ -2013,8 +2015,13 @@ function renderDashFromCache() {
   activeRecords.forEach(r => {
     const center = DATA.centers.find(c => c.id === r.centerId);
     const emp = DATA.employees.find(e => e.id === r.employeeId);
-    const contractor = DATA.contractors.find(ct => ct.id === emp?.contractorId);
-    const displayName = r.backupRealName ? `${r.employeeName} (${r.backupRealName})` : r.employeeName;
+    // Use r.contractorId as fallback for backup/virtual employees
+    const contractorId = emp?.contractorId || r.contractorId;
+    const contractor = DATA.contractors.find(ct => ct.id === contractorId);
+    // Display: for backup show "Backup NombreContrata (NombreReal)"
+    const displayName = r.backupRealName
+      ? `🔵 ${r.backupRealName} <span style="font-size:10px;color:#64748b;font-weight:400">(${r.employeeName})</span>`
+      : r.employeeName;
     const elapsed = ((now - new Date(r.checkIn)) / 3600000).toFixed(1);
     tbody.innerHTML += `<tr class="active-row">
       <td class="font-black">${displayName}</td>
@@ -2194,6 +2201,9 @@ function renderReportsTable() {
   let filtered = [...RPT_ALL_RECORDS];
   if (centerId) filtered = filtered.filter(r => r.centerId === centerId);
   if (contractorId) filtered = filtered.filter(r => {
+    // First try the contractorId stored directly in the record (backup employees)
+    if (r.contractorId) return r.contractorId === contractorId;
+    // Fallback: look up the employee's contractorId
     const emp = DATA.employees.find(e => e.id === r.employeeId);
     return emp?.contractorId === contractorId;
   });
@@ -2265,11 +2275,15 @@ function renderReportsTable() {
   pageRecords.forEach(r => {
     const emp = DATA.employees.find(e => e.id === r.employeeId);
     const center = DATA.centers.find(c => c.id === r.centerId);
-    const contractor = DATA.contractors.find(ct => ct.id === emp?.contractorId);
+    const contractorId = emp?.contractorId || r.contractorId;
+    const contractor = DATA.contractors.find(ct => ct.id === contractorId);
     const h = r.checkOut ? hoursWorked(r.checkIn, r.checkOut) : 0;
     const std = emp?.standardHours || 8;
     const diff = h - std;
-    const displayName = r.backupRealName ? `${r.employeeName} (${r.backupRealName})` : r.employeeName;
+    // Backup: show real name prominently, backup account name as subtitle
+    const displayName = r.backupRealName
+      ? `🔵 ${r.backupRealName}<br><span class="text-xs text-muted">${r.employeeName}</span>`
+      : r.employeeName;
     const isActive = r.status === 'active';
     const elapsed = isActive ? ((now - new Date(r.checkIn)) / 3600000).toFixed(1) + 'h' : '';
     const diffStr = h === 0 ? '' : diff > 0 ? `<span class="text-success font-bold">+${diff.toFixed(1)}</span>` : diff < -0.1 ? `<span class="text-danger font-bold">${diff.toFixed(1)}</span>` : '<span class="text-muted">0</span>';
@@ -2447,11 +2461,12 @@ function buildExportData() {
   return RPT_RECORDS.map(r => {
     const emp = DATA.employees.find(e => e.id === r.employeeId);
     const center = DATA.centers.find(c => c.id === r.centerId);
-    const contractor = DATA.contractors.find(ct => ct.id === emp?.contractorId);
+    const contractorId = emp?.contractorId || r.contractorId;
+    const contractor = DATA.contractors.find(ct => ct.id === contractorId);
     const h = r.checkOut ? hoursWorked(r.checkIn, r.checkOut) : 0;
     const std = emp?.standardHours || 8;
     const diff = h - std;
-    const displayName = r.backupRealName ? `${r.employeeName} (${r.backupRealName})` : r.employeeName;
+    const displayName = r.backupRealName ? `${r.backupRealName} (Backup - ${r.employeeName})` : r.employeeName;
     return {
       fecha: fmtDate(r.checkIn), empleado: displayName,
       contrata: contractor?.name || '-', centro: center?.name || '-',
