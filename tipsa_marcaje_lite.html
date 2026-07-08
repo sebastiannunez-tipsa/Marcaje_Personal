@@ -772,7 +772,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v14';
+const APP_VERSION = '2026-05-26-v15';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -1754,9 +1754,9 @@ async function confirmBackupOut() {
     btn.disabled = false;
     btn.textContent = '🏠 VOLVER A LA PANTALLA INICIAL';
     btn.className = 'btn-giant btn-success';
-    btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
+    btn.onclick = () => { location.reload(); };
     showEmpSuccess(`✅ Salida registrada para ${session.backupRealName}`);
-    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
+    setTimeout(() => { location.reload(); }, 2000);
   } catch (e) {
     IS_PROCESSING = false;
     showEmpError('Error al registrar salida: ' + e.message);
@@ -1781,6 +1781,9 @@ async function doCheckIn(backupName) {
   hide('empError'); hide('empSuccess');
   
   try {
+    // Ensure auth token is fresh before writing
+    await fbAuth();
+    
     const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const empId = CURRENT_USER.id || `backup_${Date.now()}`;
     const record = {
@@ -1792,8 +1795,10 @@ async function doCheckIn(backupName) {
     };
     if (backupName) record.backupRealName = backupName;
     
+    console.log('[doCheckIn] saving record:', JSON.stringify(record));
     await fbSet('attendance', id, record);
-    TODAY_ATTENDANCE_TS = 0; // Invalidate today cache so next employee sees fresh data
+    console.log('[doCheckIn] saved OK:', id);
+    TODAY_ATTENDANCE_TS = 0;
     if (!empId.startsWith('backup_virtual_')) {
       try { await fbUpdate('employees', empId, { lastAttendance: record.checkIn }); } catch(_) {}
     }
@@ -1803,12 +1808,13 @@ async function doCheckIn(backupName) {
       btn.disabled = false;
       btn.textContent = '🏠 VOLVER AL INICIO';
       btn.className = 'btn-giant btn-success';
-      btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
+      btn.onclick = () => { location.reload(); };
     }
-    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2500);
+    setTimeout(() => { location.reload(); }, 2500);
   } catch (e) {
-    showEmpError('Error: ' + e.message);
-    updateEmployeeUI();
+    console.error('[doCheckIn] error:', e);
+    showEmpError('Error al registrar: ' + e.message + ' (código: ' + (e.status || '?') + ')');
+    if (btn) { btn.disabled = false; btn.textContent = '➡ REGISTRAR ENTRADA'; btn.onclick = function(){doCheckIn();}; }
   }
 }
 
@@ -1831,9 +1837,9 @@ async function doCheckOut() {
       btn.disabled = false;
       btn.textContent = '🏠 VOLVER AL INICIO';
       btn.className = 'btn-giant btn-success';
-      btn.onclick = () => { window.location.href = window.location.pathname + '?t=' + Date.now(); };
+      btn.onclick = () => { location.reload(); };
     }
-    setTimeout(() => { window.location.href = window.location.pathname + '?t=' + Date.now(); }, 2000);
+    setTimeout(() => { location.reload(); }, 2000);
   } catch (e) {
     showEmpError(e.message);
     updateEmployeeUI();
