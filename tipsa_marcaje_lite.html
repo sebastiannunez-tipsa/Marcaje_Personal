@@ -772,7 +772,7 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-05-26-v15';
+const APP_VERSION = '2026-07-10-v16';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
     // New version deployed — wipe all stale cache
@@ -1482,19 +1482,31 @@ async function getTodayAttendance() {
 
 async function checkActiveSession() {
   try {
-    // Single query: get all today's attendance, filter client-side
-    // Uses 1-min memory cache to avoid re-querying when multiple employees use same device
-    const allToday = await getTodayAttendance();
+    // Search last 48h for this employee's active session
+    // (catches night shifts and employees who entered yesterday)
+    const now = new Date();
+    const from48h = new Date(now.getTime() - 48 * 3600 * 1000).toISOString();
+    const to48h = now.toISOString();
     
-    const mine = allToday.filter(r => r.employeeId === CURRENT_USER.id);
+    const recent = await fbQuery({
+      from: [{ collectionId: 'attendance' }],
+      where: { compositeFilter: { op: 'AND', filters: [
+        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: from48h } } },
+        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: to48h } } }
+      ]}}
+    });
+    
+    // Filter for this employee client-side
+    const mine = recent.filter(r => r.employeeId === CURRENT_USER.id);
     const found = mine.find(r => r.status === 'active') || null;
     
     if (found) {
       ACTIVE_SESSION = found;
-    } else if (allToday.length > 0) {
+    } else if (mine.length > 0) {
+      // Has records but all completed → no open session
       ACTIVE_SESSION = null;
     }
-    // If query returned 0 (error/rate-limit), keep previous ACTIVE_SESSION
+    // If query returned 0 (quota/error) → keep previous ACTIVE_SESSION
     
     updateEmployeeUI();
   } catch (e) {
