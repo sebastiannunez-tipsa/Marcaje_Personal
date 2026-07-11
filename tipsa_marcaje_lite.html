@@ -772,13 +772,13 @@ tr.active-row td { background: #ecfdf5; }
 
 // ── Firebase Config ──
 // ── App version — increment when deploying to force cache refresh ──
-const APP_VERSION = '2026-07-10-v17';
+const APP_VERSION = '2026-07-10-v18';
 (function clearOldCache() {
   if (localStorage.getItem('tipsa_app_version') !== APP_VERSION) {
-    // New version deployed — wipe all stale cache
-    const keysToKeep = ['tipsa_reads_count', 'tipsa_reads_date'];
+    // New version deployed — wipe all stale cache AND reset reads counter
+    const keysToKeep = [];  // Clear everything including reads counter
     Object.keys(localStorage)
-      .filter(k => k.startsWith('tipsa_') && !keysToKeep.includes(k))
+      .filter(k => k.startsWith('tipsa_'))
       .forEach(k => localStorage.removeItem(k));
     localStorage.setItem('tipsa_app_version', APP_VERSION);
     console.log('[TIPSA] Cache cleared for new version:', APP_VERSION);
@@ -807,11 +807,11 @@ let INACTIVITY_TIMER = null;
 let CACHE_TS = {};
 let BACKUP_ACTIVE_SESSIONS = [];
 
-// ── Quota Control ──
-const QUOTA_LIMIT = 40000;
-const QUOTA_WARN = 35000;
+// ── Quota Control (plan Blaze - no limit) ──
+const QUOTA_LIMIT = 1000000; // 1M lecturas — plan Blaze, sin límite práctico
+const QUOTA_WARN  = 800000;
 let READS_TODAY = parseInt(localStorage.getItem('tipsa_reads_count') || '0');
-let READS_DATE = localStorage.getItem('tipsa_reads_date') || '';
+let READS_DATE  = localStorage.getItem('tipsa_reads_date') || '';
 
 // Reset counter if new day
 if (READS_DATE !== todayStr()) { READS_TODAY = 0; READS_DATE = todayStr(); saveQuota(); }
@@ -1484,7 +1484,6 @@ async function getRecentAttendance() {
 function invalidateAttendanceCache() {
   ATTENDANCE_CACHE = null;
   ATTENDANCE_CACHE_TS = 0;
-  invalidateAttendanceCache();
 }
 
 async function checkActiveSession() {
@@ -1681,60 +1680,22 @@ function isBackupEmployee(emp) {
 // ── Backup helpers ──
 
 async function handleCheckAction() {
+  // This is called by the main action button for regular employees only.
+  // Backup employees use backupDoEntry() / backupDoExit() directly.
   if (IS_PROCESSING) return;
   IS_PROCESSING = true;
-  
   try {
-    if (!isBackupEmployee(CURRENT_USER)) {
-      // Regular employee
-      if (ACTIVE_SESSION) {
-        await doCheckOut();
-      } else {
-        await doCheckIn();
-      }
-      return;
-    }
-    
-    // ── BACKUP FLOW ──
-    // Query today's ACTIVE backup sessions for this center + this backup employee
-    const { from: todayFrom, to: todayTo } = todayUTCRange();
-    const todaySessions = await fbQuery({
-      from: [{ collectionId: 'attendance' }],
-      where: { compositeFilter: { op: 'AND', filters: [
-        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: todayFrom } } },
-        { fieldFilter: { field: { fieldPath: 'checkIn' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: todayTo } } }
-      ]}}
-    });
-    
-    // Filter: same backup employee ID + same center + status active (no checkOut)
-    BACKUP_ACTIVE_SESSIONS = todaySessions.filter(r =>
-      r.employeeId === CURRENT_USER.id &&
-      r.centerId === SELECTED_CENTER_ID &&
-      r.status === 'active' &&
-      r.backupRealName
-    );
-    
-    console.log(`[backup] Active sessions today: ${BACKUP_ACTIVE_SESSIONS.length}`);
-    
-    if (BACKUP_ACTIVE_SESSIONS.length === 0) {
-      // No active sessions → ENTRY flow
-      $('inpBackupName').value = '';
-      show('modalBackup');
-      IS_PROCESSING = false;
+    if (ACTIVE_SESSION) {
+      await doCheckOut();
     } else {
-      // Has active sessions → EXIT flow: ask which person is leaving
-      const sel = $('selBackupOut');
-      sel.innerHTML = '<option value="">-- Seleccionar trabajador --</option>';
-      BACKUP_ACTIVE_SESSIONS.forEach((r, i) => {
-        sel.innerHTML += `<option value="${i}">${r.backupRealName} (entrada: ${fmtTime(r.checkIn)})</option>`;
-      });
-      show('modalBackupOut');
-      IS_PROCESSING = false;
+      await doCheckIn();
     }
   } catch (e) {
     IS_PROCESSING = false;
     showEmpError('Error: ' + e.message);
     updateEmployeeUI();
+  } finally {
+    IS_PROCESSING = false;
   }
 }
 
